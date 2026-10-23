@@ -1,0 +1,150 @@
+.visitor-heading {
+  margin-bottom: 36px;
+}
+
+.visitor-heading h2 {
+  max-width: 650px;
+  margin: 18px 0 16px;
+  font-family: var(--serif);
+  font-size: clamp(38px, 4.6vw, 62px);
+  font-weight: 400;
+  letter-spacing: -0.055em;
+  line-height: 1.04;
+}
+
+.visitor-heading > p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.visitor-map-frame {
+  position: relative;
+  min-height: 200px;
+  padding: 22px 0 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.visitor-map-host {
+  width: 100%;
+  min-width: 0;
+  min-height: clamp(180px, 36vw, 420px);
+}
+
+.visitor-map-host img,
+.visitor-map-host canvas,
+.visitor-map-host svg {
+  max-width: 100%;
+}
+
+.visitor-map-host .mapmyvisitors-visitors {
+  font-family: var(--sans) !important;
+  color: var(--ink) !important;
+  font-variant-numeric: tabular-nums;
+  padding-bottom: 16px;
+  font-size: 16px !important;
+  line-height: 24px !important;
+}
+
+.visitor-map-host #mapmyvisitors-widget,
+.visitor-map-host .mapmyvisitors-map {
+  width: 100% !important;
+}
+
+.visitor-map-host .mapmyvisitors-map {
+  background-size: 100% 100%;
+  isolation: isolate;
+}
+
+/* Reveal the geographical background through a dot grid. Visitor markers
+   remain unmasked on the separate SVG layer, in their original projection. */
+.visitor-map-host .mapmyvisitors-map::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(circle, transparent 1.35px, var(--paper) 1.6px);
+  background-size: 6px 6px;
+  pointer-events: none;
+}
+
+.visitor-map-host .jvectormap-container {
+  z-index: 1;
+}
+
+.visitor-map-host #clstminf { color: var(--muted) !important; }
+
+.visitor-map-status {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.visitor-map-frame[data-map-status="loading"] .visitor-map-status {
+  position: absolute;
+  inset: 50% 12px auto;
+  text-align: center;
+  transform: translateY(-50%);
+}
+
+.visitor-map-details {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding-top: 22px;
+  font-size: 12px;
+}
+
+.visitor-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  color: var(--muted);
+}
+
+.visitor-map-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visitor-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.visitor-dot-past { background: var(--cobalt); }
+.visitor-dot-recent { background: var(--gold); }
+
+.visitor-map-note {
+  max-width: 690px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  letter-spacing: 0;
+}
+
+.visitor-map-note a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .visitor-heading { margin-bottom: 28px; }
+  .visitor-heading h2 { font-size: clamp(36px, 10vw, 50px); }
+  .visitor-map-frame { padding-top: 18px; }
+  .visitor-map-host { min-height: 160px; }
+  .visitor-map-details { gap: 18px; }
+  .visitor-map-legend { gap: 18px; }
+}
