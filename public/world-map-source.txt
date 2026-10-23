@@ -1,0 +1,25 @@
+World land dotted map
+
+Source: Natural Earth 1:110m land polygons (ne_110m_land.geojson).
+Data URL: https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson
+Project: https://github.com/nvkelso/natural-earth-vector
+Terms: https://www.naturalearthdata.com/about/terms-of-use/
+License: Public domain. Natural Earth permits modification and redistribution.
+Retrieved: 2026-10-23
+Source SHA-256: 9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9
+
+Projection: Miller cylindrical, central meridian 0 degrees.
+Canvas/viewBox: 0 0 900 440.
+Longitude bounds: -180 to 180 degrees. Latitude bounds: -60 to 85 degrees.
+Antarctica is omitted by the latitude cutoff.
+Miller y(phi): 1.25 * ln(tan(pi / 4 + 0.4 * phi)), where phi is in radians.
+x: ((longitude + 180) / 360) * 900.
+y: ((MillerY(85) - MillerY(latitude)) / (MillerY(85) - MillerY(-60))) * 440.
+
+Construction: Sample a regular lattice starting at (3, 3), spaced 6 SVG units.
+Inverse-project each lattice point and retain points inside a source land polygon
+and outside its interior holes. There are 3300 dots, radius 1.35 units,
+fill #d6d3ca, with a transparent background.
+No third-party map renderer or tracking script is embedded.
+
+The corresponding marker projection is app/visitor-map-projection.ts.

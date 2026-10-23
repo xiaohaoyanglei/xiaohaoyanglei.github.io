@@ -1,7 +1,5 @@
-.visitor-heading {
-  margin-bottom: 36px;
-}
-
+.visitor-section { max-width: 1000px; margin-inline: auto; padding: 20px 0 60px; }
+.visitor-heading { margin-bottom: 36px; }
 .visitor-heading h2 {
   max-width: 650px;
   margin: 18px 0 16px;
@@ -11,140 +9,72 @@
   letter-spacing: -0.055em;
   line-height: 1.04;
 }
-
-.visitor-heading > p:last-child {
-  margin: 0;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.6;
-}
-
-.visitor-map-frame {
-  position: relative;
-  min-height: 200px;
-  padding: 22px 0 12px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--paper);
-}
-
-.visitor-map-host {
-  width: 100%;
-  min-width: 0;
-  min-height: clamp(180px, 36vw, 420px);
-}
-
-.visitor-map-host img,
-.visitor-map-host canvas,
-.visitor-map-host svg {
-  max-width: 100%;
-}
-
-.visitor-map-host .mapmyvisitors-visitors {
-  font-family: var(--sans) !important;
-  color: var(--ink) !important;
-  font-variant-numeric: tabular-nums;
-  padding-bottom: 16px;
-  font-size: 16px !important;
-  line-height: 24px !important;
-}
-
-.visitor-map-host #mapmyvisitors-widget,
-.visitor-map-host .mapmyvisitors-map {
-  width: 100% !important;
-}
-
-.visitor-map-host .mapmyvisitors-map {
-  background-size: 100% 100%;
-  isolation: isolate;
-}
-
-/* Reveal the geographical background through a dot grid. Visitor markers
-   remain unmasked on the separate SVG layer, in their original projection. */
-.visitor-map-host .mapmyvisitors-map::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background: radial-gradient(circle, transparent 1.35px, var(--paper) 1.6px);
-  background-size: 6px 6px;
-  pointer-events: none;
-}
-
-.visitor-map-host .jvectormap-container {
-  z-index: 1;
-}
-
-.visitor-map-host #clstminf { color: var(--muted) !important; }
-
-.visitor-map-status {
-  margin: 0;
-  padding: 16px 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.visitor-map-frame[data-map-status="loading"] .visitor-map-status {
-  position: absolute;
-  inset: 50% 12px auto;
-  text-align: center;
-  transform: translateY(-50%);
-}
-
-.visitor-map-details {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  padding-top: 22px;
-  font-size: 12px;
-}
-
-.visitor-map-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 24px;
-  color: var(--muted);
-}
-
-.visitor-map-legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.visitor-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
+.visitor-heading > p:last-child { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
+.visitor-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 24px 38px; padding: 0 0 26px; }
+.visitor-metric { display: flex; flex-direction: column; gap: 8px; }
+.visitor-metric strong { color: var(--ink); font-size: 26px; line-height: 1; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.05em; }
+.visitor-metric-total strong { font-size: 36px; }
+.visitor-metric span { color: var(--muted); font-size: 11px; letter-spacing: 0.01em; }
+.visitor-map-frame { position: relative; min-height: 180px; padding: 24px 0 12px; background: transparent; }
+.visitor-world { position: relative; width: 100%; min-width: 0; isolation: isolate; }
+.visitor-world-land { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; user-select: none; }
+.visitor-marker { position: absolute; z-index: 1; display: grid; width: 30px; height: 30px; padding: 0; place-items: center; transform: translate(-50%, -50%); border: 0; border-radius: 50%; background: transparent; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.visitor-marker-dot { width: 7px; height: 7px; border: 1px solid rgba(251, 249, 244, 0.9); border-radius: 50%; background: var(--cobalt); box-shadow: 0 0 0 3px rgba(27, 85, 231, 0.09); transition: transform 160ms ease; }
+.visitor-marker.is-recent .visitor-marker-dot { background: var(--gold); box-shadow: 0 0 0 3px rgba(184, 137, 66, 0.12); }
+.visitor-marker.is-active { z-index: 5; }
+.visitor-marker.is-active .visitor-marker-dot { transform: scale(1.35); }
+.visitor-marker:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 1px; }
+.visitor-tooltip { position: absolute; left: 50%; bottom: calc(100% + 3px); display: flex; width: max-content; max-width: min(230px, 65vw); flex-direction: column; gap: 5px; padding: 12px 14px; transform: translateX(-50%); border: 1px solid var(--line); border-radius: 10px; background: var(--paper); box-shadow: 0 5px 20px rgba(45, 37, 24, 0.12); color: var(--ink); text-align: left; font-family: var(--sans); font-size: 12px; line-height: 1.4; pointer-events: none; }
+.visitor-tooltip strong { font-weight: 600; }
+.visitor-tooltip > span { font-variant-numeric: tabular-nums; }
+.visitor-tooltip small { color: var(--muted); font-size: 10px; }
+.visitor-tooltip-start { left: 0; transform: none; }
+.visitor-tooltip-end { right: 0; left: auto; transform: none; }
+.visitor-tooltip-below { top: calc(100% + 3px); bottom: auto; }
+.visitor-map-feedback { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.visitor-map-feedback:empty { display: none; }
+.visitor-map-feedback p { margin: 12px 0 4px; }
+.visitor-retry { padding: 0; border: 0; background: transparent; color: var(--cobalt); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.visitor-map-details { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 18px; padding-top: 22px; font-size: 12px; }
+.visitor-map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; color: var(--muted); }
+.visitor-map-legend > span { display: inline-flex; align-items: center; gap: 8px; }
+.visitor-dot { display: inline-block; width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; }
 .visitor-dot-past { background: var(--cobalt); }
 .visitor-dot-recent { background: var(--gold); }
-
-.visitor-map-note {
-  max-width: 690px;
-  margin: 18px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.8;
-  letter-spacing: 0;
-}
-
-.visitor-map-note a {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
+.visitor-detected { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.visitor-detected strong { color: var(--ink); font-weight: 500; }
+.visitor-regions { margin-top: 24px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.visitor-regions summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 0; color: var(--cobalt); font-size: 12px; line-height: 1.5; font-weight: 600; cursor: pointer; list-style: none; }
+.visitor-regions summary::-webkit-details-marker { display: none; }
+.visitor-regions summary > span { color: var(--muted); font-size: 18px; font-weight: 400; transition: transform 150ms; }
+.visitor-regions[open] summary > span { transform: rotate(45deg); }
+.visitor-regions summary:focus-visible, .visitor-retry:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 4px; }
+.visitor-region-content { padding: 0 0 18px; }
+.visitor-region-content table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.6; }
+.visitor-region-content th, .visitor-region-content td { padding: 9px 0; text-align: left; }
+.visitor-region-content thead th { color: var(--muted); font-size: 10px; font-weight: 500; }
+.visitor-region-content tbody th { color: var(--ink); font-weight: 400; }
+.visitor-region-content tr + tr { border-top: 1px solid var(--line); }
+.visitor-region-content td, .visitor-region-content th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.visitor-region-empty, .visitor-region-content > p { margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.visitor-map-note { max-width: 690px; margin: 18px 0 0; color: var(--muted); font-size: 12px; line-height: 1.8; letter-spacing: 0; }
+.visitor-map-credit { margin-top: 7px; font-size: 10px; }
+.visitor-map-limit { font-size: 11px; }
+.visitor-map-note a { text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 760px) {
+  .visitor-section { padding-block: 10px 40px; }
   .visitor-heading { margin-bottom: 28px; }
   .visitor-heading h2 { font-size: clamp(36px, 10vw, 50px); }
-  .visitor-map-frame { padding-top: 18px; }
-  .visitor-map-host { min-height: 160px; }
-  .visitor-map-details { gap: 18px; }
-  .visitor-map-legend { gap: 18px; }
+  .visitor-summary { gap: 22px; padding-bottom: 22px; }
+  .visitor-metric strong { font-size: 22px; }
+  .visitor-metric-total strong { font-size: 31px; }
+  .visitor-metric span { font-size: 10px; }
+  .visitor-map-frame { padding-top: 18px; min-height: 150px; }
+  .visitor-marker { width: 36px; height: 36px; }
+  .visitor-marker-dot { width: 6px; height: 6px; }
+  .visitor-map-legend { gap: 14px 18px; font-size: 10px; }
+  .visitor-map-details { gap: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .visitor-marker-dot, .visitor-regions summary > span { transition: none; }
 }

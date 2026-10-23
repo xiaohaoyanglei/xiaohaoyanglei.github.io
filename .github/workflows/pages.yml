@@ -27,6 +27,10 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Install dependencies
         run: npm ci
+      - name: Check visitor counter integrity
+        run: node --test analytics/worker.test.mjs
+      - name: Check TypeScript
+        run: npm run typecheck
       - name: Build static homepage
         run: npm run build:pages
         env:

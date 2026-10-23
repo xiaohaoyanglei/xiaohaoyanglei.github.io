@@ -616,10 +616,10 @@ export default function Home() {
           </div>
             </section>
           </SectionCard>
-          <SectionCard className="visitor-card" delay={70}>
-            <VisitorMap />
-          </SectionCard>
           </div>
+        </div>
+        <div className="visitor-footer page-shell">
+          <VisitorMap />
         </div>
       </main>
 
