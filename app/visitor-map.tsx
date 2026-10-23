@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ANALYTICS_URL } from "./visitor-map-config";
-import { MAP_HEIGHT, MAP_WIDTH, projectCoordinates } from "./visitor-map-projection";
+import { MAP_HEIGHT, MAP_WIDTH } from "./visitor-map-projection";
+import { clusterVisitorLocations, visitorDotSize } from "./visitor-map-clusters";
 import { loadVisitorStatistics } from "./visitor-map-client";
 import type { DetectedLocation, VisitorStats } from "./visitor-map-data";
 import "./visitor-map.css";
@@ -43,6 +44,25 @@ export default function VisitorMap() {
   const [attempt, setAttempt] = useState(0);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+  const tooltipOffsetRef = useRef(0);
+  const [tooltipOffset, setTooltipOffset] = useState(0);
+  const [mapLayout, setMapLayout] = useState({ width: MAP_WIDTH, markerSize: 30 });
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const update = () => setMapLayout({
+      width: map.getBoundingClientRect().width,
+      markerSize: window.matchMedia("(max-width: 760px)").matches ? 36 : 30,
+    });
+    const observer = new ResizeObserver(update);
+    observer.observe(map);
+    window.addEventListener("resize", update);
+    update();
+    return () => { observer.disconnect(); window.removeEventListener("resize", update); };
+  }, []);
 
   useEffect(() => {
     const base = ANALYTICS_URL.trim().replace(/\/+$/, "");
@@ -59,6 +79,21 @@ export default function VisitorMap() {
   }, [attempt]);
 
   useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") setAttempt((value) => value + 1);
+    };
+    const restore = (event: PageTransitionEvent) => { if (event.persisted) refresh(); };
+    const interval = window.setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("pageshow", restore);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("pageshow", restore);
+    };
+  }, []);
+
+  useEffect(() => {
     const dismiss = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Element && !target.closest(".visitor-marker")) setSelectedId(null);
@@ -71,15 +106,36 @@ export default function VisitorMap() {
   // A just-recorded visit can be milliseconds ahead of the visitor's clock.
   // Advance with wall time while never labelling that newest visit as old.
   const referenceTime = Math.max(Date.now(), Date.parse(stats?.updatedAt ?? "") || 0);
-  const points = (stats?.locations ?? []).flatMap((location) => {
-    // Country-only records stay in the country table. No invented capital,
-    // country centroid, or (0, 0) marker stands in for a missing location.
-    if (!location.country || location.country === "XX") return [];
-    if (!location.city && !location.region) return [];
-    if (location.latitude === null || location.longitude === null || location.views === 0) return [];
-    const position = projectCoordinates(location.latitude, location.longitude);
-    return position ? [{ ...location, ...position }] : [];
-  });
+  const points = useMemo(() => clusterVisitorLocations(stats?.locations ?? [], mapLayout.width, mapLayout.markerSize), [stats, mapLayout]);
+  const maximumViews = Math.max(1, ...points.map((point) => point.views));
+  useEffect(() => {
+    const ids = new Set(points.map((point) => point.id));
+    setHoveredId((id) => id && ids.has(id) ? id : null);
+    setSelectedId((id) => id && ids.has(id) ? id : null);
+  }, [points]);
+  useLayoutEffect(() => {
+    const reposition = () => {
+      const tooltip = tooltipRef.current;
+      if (!tooltip) return;
+      const headerBottom = document.querySelector(".site-header-shell")?.getBoundingClientRect().bottom ?? 0;
+      const topLimit = Math.max(12, headerBottom + 10);
+      const marker = mapRef.current?.querySelector(".visitor-marker.is-active")?.getBoundingClientRect();
+      if (marker && (marker.bottom < topLimit || marker.top > window.innerHeight)) {
+        setHoveredId(null);
+        setSelectedId(null);
+        return;
+      }
+      const rect = tooltip.getBoundingClientRect();
+      const naturalTop = rect.top - tooltipOffsetRef.current;
+      const top = Math.max(topLimit, Math.min(naturalTop, window.innerHeight - rect.height - 12));
+      const offset = top - naturalTop;
+      tooltipOffsetRef.current = offset;
+      setTooltipOffset(offset);
+    };
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    return () => window.removeEventListener("scroll", reposition, true);
+  }, [activeId, points]);
   const started = readableDate(stats?.startedAt ?? null);
   const countryCount = stats?.countries.filter((country) => country.views > 0).length ?? 0;
 
@@ -103,7 +159,7 @@ export default function VisitorMap() {
       </div>
 
       <div className="visitor-map-frame" data-map-status={status}>
-        <div className="visitor-world" role="group" aria-label="Approximate locations of visits" style={{ aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}` }}>
+        <div ref={mapRef} className="visitor-world" role="group" aria-label="Approximate locations of visits" style={{ aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}` }}>
           {/* The public-domain land layer and every marker use the same Miller projection. */}
           <img className="visitor-world-land" src="/world-land-dots.svg" width={MAP_WIDTH} height={MAP_HEIGHT} alt="Dotted world map" draggable={false} />
           {points.map((location) => {
@@ -111,27 +167,31 @@ export default function VisitorMap() {
             const lastSeen = location.lastSeen ? Date.parse(location.lastSeen) : Number.NaN;
             const age = referenceTime - lastSeen;
             const recent = Number.isFinite(age) && age >= 0 && age <= 24 * 60 * 60 * 1000;
-            const label = locationName(location, stats);
+            const grouped = location.locations.length > 1;
+            const label = grouped ? `${location.locations.length} nearby locations` : locationName(location.locations[0], stats);
+            const breakdown = location.locations.map((entry) => `${locationName(entry, stats)}: ${formatCount(entry.views)}`).join("; ");
             const horizontal = location.x < MAP_WIDTH * 0.25 ? "start" : location.x > MAP_WIDTH * 0.75 ? "end" : "center";
             const below = location.y < MAP_HEIGHT * 0.25;
             return (
               <button
                 key={location.id}
-                className={`visitor-marker${recent ? " is-recent" : ""}${active ? " is-active" : ""}`}
+                className={`visitor-marker${grouped ? " is-grouped" : ""}${recent ? " is-recent" : ""}${active ? " is-active" : ""}`}
                 style={{ left: `${location.x / MAP_WIDTH * 100}%`, top: `${location.y / MAP_HEIGHT * 100}%` }}
                 type="button"
-                aria-label={`${label}: ${formatCount(location.views)} ${location.views === 1 ? "page view" : "page views"}. Approximate location.`}
+                aria-label={`${label}: ${formatCount(location.views)} ${location.views === 1 ? "page view" : "page views"}.${grouped ? ` ${breakdown}.` : ""} Approximate location.`}
                 aria-expanded={active}
                 onPointerEnter={(event) => { if (event.pointerType !== "touch") setHoveredId(location.id); }}
                 onPointerLeave={() => setHoveredId(null)}
-                onFocus={() => setSelectedId(location.id)}
+                onFocus={() => { setHoveredId(null); setSelectedId(location.id); }}
                 onBlur={() => setSelectedId((id) => id === location.id ? null : id)}
                 onClick={() => setSelectedId(location.id)}
                 onKeyDown={(event) => { if (event.key === "Escape") { setSelectedId(null); setHoveredId(null); } }}
               >
-                <span className="visitor-marker-dot" aria-hidden="true" />
-                {active && <span className={`visitor-tooltip visitor-tooltip-${horizontal}${below ? " visitor-tooltip-below" : ""}`} role="tooltip">
-                  <strong>{label}</strong><span>{formatCount(location.views)} {location.views === 1 ? "page view" : "page views"}</span><small>Approximate location</small>
+                <span className="visitor-marker-dot" aria-hidden="true" style={{ width: visitorDotSize(location.views, maximumViews), height: visitorDotSize(location.views, maximumViews) }} />
+                {active && <span ref={tooltipRef} style={{ translate: `0 ${tooltipOffset}px` }} className={`visitor-tooltip visitor-tooltip-${horizontal}${below ? " visitor-tooltip-below" : ""}${grouped ? " visitor-tooltip-group" : ""}`} role="tooltip">
+                  <strong>{label}</strong><span>{formatCount(location.views)} {location.views === 1 ? "page view" : "page views"}{grouped ? " in total" : ""}</span>
+                  {grouped && <span className="visitor-tooltip-locations">{location.locations.map((entry) => <span className="visitor-tooltip-location" key={entry.id}><span>{locationName(entry, stats)}</span><b>{formatCount(entry.views)}</b></span>)}</span>}
+                  <small>Approximate location{grouped ? "s · Page views by location" : ""}</small>
                 </span>}
               </button>
             );
@@ -150,6 +210,7 @@ export default function VisitorMap() {
         <div className="visitor-map-legend" aria-label="Map legend">
           <span><i className="visitor-dot visitor-dot-past" aria-hidden="true" />Earlier visits</span>
           <span><i className="visitor-dot visitor-dot-recent" aria-hidden="true" />Visited in the last 24 hours</span>
+          <span>Point size reflects page views</span>
         </div>
         {detected?.country && <p className="visitor-detected">Your approximate location: <strong>{locationName(detected, stats)}</strong></p>}
       </div>
@@ -169,7 +230,7 @@ export default function VisitorMap() {
         </div> : <p className="visitor-region-empty">{status === "loading" ? "Loading regional statistics…" : "Regional statistics are not available yet."}</p>}
       </details>
 
-      <p className="visitor-map-note">Hover, focus, or tap a point for local page views. Totals include repeat visits and visits without a detailed location; locations are approximate.</p>
+      <p className="visitor-map-note">Hover, focus, or tap a point for local page views. Nearby locations share a point with separate counts. Totals include repeat visits and visits without a detailed location; locations are approximate.</p>
       <p className="visitor-map-note visitor-map-credit">Statistics hosted on Cloudflare.{started ? ` New statistics began ${started}.` : " A new record begins with this migration."} Map data: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth<span className="sr-only"> (opens in a new tab)</span></a>.</p>
       <noscript><p className="visitor-map-note">Enable JavaScript to load live visitor counts. The map background is available without it.</p></noscript>
     </section>
