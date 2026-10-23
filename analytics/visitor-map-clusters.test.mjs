@@ -33,13 +33,26 @@ function loadTypeScript(filename) {
 }
 
 const { clusterVisitorLocations, visitorDotSize } = loadTypeScript(path.join(appDirectory, "visitor-map-clusters.ts"));
-const { MAP_WIDTH, MAP_HEIGHT } = loadTypeScript(path.join(appDirectory, "visitor-map-projection.ts"));
+const { MAP_WIDTH, MAP_HEIGHT, projectCoordinates } = loadTypeScript(path.join(appDirectory, "visitor-map-projection.ts"));
 
 function location(id, city, latitude, longitude, views = 1, overrides = {}) {
   return {
     id, country: "US", region: null, city, latitude, longitude, views,
     lastSeen: "2026-10-23T00:00:00.000Z", ...overrides,
   };
+}
+
+// Locate synthetic fixtures in screen geometry through the real projection,
+// without duplicating the projection's formula in the tests.
+function atProjectedPosition(id, x, y, views = 1) {
+  let south = -60;
+  let north = 85;
+  for (let iteration = 0; iteration < 80; iteration++) {
+    const middle = (south + north) / 2;
+    if (projectCoordinates(middle, 0).y > y) south = middle;
+    else north = middle;
+  }
+  return location(id, `Fixture ${id}`, (south + north) / 2, x / MAP_WIDTH * 360 - 180, views);
 }
 
 const seattle = location("seattle", "Seattle", 47.61, -122.33, 12, { region: "Washington", lastSeen: "2026-10-22T00:00:00.000Z" });
@@ -56,25 +69,26 @@ function assertConserved(clusters, input) {
   assert.equal(new Set(clusters.map((cluster) => cluster.id)).size, clusters.length, "Cluster IDs must be unique for React keys and focus state");
   for (const cluster of clusters) {
     assert.equal(cluster.views, cluster.locations.reduce((sum, point) => sum + point.views, 0), "The tooltip breakdown must add up to its marker total");
+    assert.equal(cluster.diameter, visitorDotSize(cluster.views, Math.max(...input.map((point) => point.views))), "Rendering and overlap detection must use the fixed input maximum");
     assert.ok(Number.isFinite(cluster.x) && cluster.x >= 0 && cluster.x <= MAP_WIDTH);
     assert.ok(Number.isFinite(cluster.y) && cluster.y >= 0 && cluster.y <= MAP_HEIGHT);
   }
 }
 
-function assertHitTargetsSeparated(clusters, widthPixels, markerPixels) {
+function assertVisibleCirclesSeparated(clusters, widthPixels) {
   const scale = widthPixels / MAP_WIDTH;
   for (let first = 0; first < clusters.length; first++) {
     for (let second = first + 1; second < clusters.length; second++) {
-      const dx = Math.abs(clusters[first].x - clusters[second].x) * scale;
-      const dy = Math.abs(clusters[first].y - clusters[second].y) * scale;
-      assert.ok(dx + 1e-7 >= markerPixels + 2 || dy + 1e-7 >= markerPixels + 2,
-        `Hit targets overlap at ${widthPixels}px: ${clusters[first].id} and ${clusters[second].id} (${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`);
+      const distance = Math.hypot(clusters[first].x - clusters[second].x, clusters[first].y - clusters[second].y) * scale;
+      const radii = (clusters[first].diameter + clusters[second].diameter) / 2;
+      assert.ok(distance + 1e-7 >= radii,
+        `Visible circles overlap at ${widthPixels}px: ${clusters[first].id} and ${clusters[second].id} (distance ${distance.toFixed(2)}px; radii ${radii.toFixed(2)}px)`);
     }
   }
 }
 
 test("Seattle 12 and Bellevue 1 share a 13-view marker while retaining both city counts", () => {
-  const clusters = clusterVisitorLocations([seattle, bellevue], 900, 30);
+  const clusters = clusterVisitorLocations([seattle, bellevue], 900);
   assert.equal(clusters.length, 1);
   assert.equal(clusters[0].views, 13);
   assert.deepEqual(Object.fromEntries(clusters[0].locations.map((point) => [point.city, point.views])), { Bellevue: 1, Seattle: 12 });
@@ -82,17 +96,70 @@ test("Seattle 12 and Bellevue 1 share a 13-view marker while retaining both city
   assertConserved(clusters, [seattle, bellevue]);
 });
 
+test("Seattle and Bellevue do not absorb Santa Clara or Los Angeles at desktop width", () => {
+  const input = [seattle, bellevue,
+    location("santa-clara", "Santa Clara", 37.35, -121.96),
+    location("los-angeles", "Los Angeles", 34.05, -118.24),
+  ];
+  const clusters = clusterVisitorLocations(input, 900);
+  assert.equal(clusters.length, 3);
+  for (const id of ["santa-clara", "los-angeles"]) {
+    assert.deepEqual(clusters.find((cluster) => cluster.locations.some((point) => point.id === id)).locations.map((point) => point.id), [id]);
+  }
+  assertConserved(clusters, input);
+  assertVisibleCirclesSeparated(clusters, 900);
+});
+
+test("London and Paris single-view circles remain separate despite overlapping old click boxes", () => {
+  const input = [location("london", "London", 51.51, -0.13, 1, { country: "GB" }),
+    location("paris", "Paris", 48.86, 2.35, 1, { country: "FR" })];
+  const clusters = clusterVisitorLocations(input, 900);
+  assert.equal(clusters.length, 2);
+  const distance = Math.hypot(clusters[0].x - clusters[1].x, clusters[0].y - clusters[1].y);
+  assert.ok(distance > 6 && distance < 30, "Fixture must distinguish visible dots from the old 30px hit boxes");
+  assertConserved(clusters, input);
+});
+
+test("diagonal 6px circles at 5px horizontal and vertical offsets do not merge", () => {
+  const y = projectCoordinates(0, -120).y;
+  const input = [atProjectedPosition("a", 150, y), atProjectedPosition("b", 155, y + 5)];
+  const clusters = clusterVisitorLocations(input, 900);
+  assert.equal(clusters.length, 2);
+  assert.ok(Math.abs(Math.abs(clusters[0].x - clusters[1].x) - 5) < 1e-9);
+  assert.ok(Math.abs(Math.abs(clusters[0].y - clusters[1].y) - 5) < 1e-9);
+  assertVisibleCirclesSeparated(clusters, 900);
+});
+
+test("intersecting circles merge but exactly tangent circles remain separate", () => {
+  const first = location("first", "First", 0, -120);
+  const overlapping = location("overlapping", "Overlapping", 0, -118);
+  const tangent = location("tangent", "Tangent", 0, -117.6);
+  assert.equal(projectCoordinates(0, tangent.longitude).x - projectCoordinates(0, first.longitude).x, 6, "Fixture should be exactly tangent, not just close");
+  assert.equal(clusterVisitorLocations([first, overlapping], 900).length, 1);
+  assert.equal(clusterVisitorLocations([first, tangent], 900).length, 2);
+});
+
+test("the closest intersecting pair merges first rather than whichever pair has the first ID", () => {
+  const y = projectCoordinates(0, -120).y;
+  const input = [atProjectedPosition("a", 150, y), atProjectedPosition("b", 155.8, y), atProjectedPosition("c", 161.2, y)];
+  const clusters = clusterVisitorLocations(input, 900);
+  assert.equal(clusters.length, 2);
+  assert.deepEqual(clusters.find((cluster) => cluster.locations.length === 2).locations.map((point) => point.id), ["b", "c"]);
+  assertConserved(clusters, input);
+  assertVisibleCirclesSeparated(clusters, 900);
+});
+
 test("input order does not change cluster membership, IDs, anchors, or tooltip order", () => {
   const input = [seattle, bellevue, ...distant, location("redmond", "Redmond", 47.67, -122.12, 2)];
   const original = structuredClone(input);
-  const expected = clusterVisitorLocations(input, 375, 36);
+  const expected = clusterVisitorLocations(input, 375);
   const permutations = [input.slice().reverse(), [...input.slice(2), ...input.slice(0, 2)], [input[3], input[0], input[5], input[2], input[1], input[4]]];
-  for (const permutation of permutations) assert.deepEqual(clusterVisitorLocations(permutation, 375, 36), expected);
+  for (const permutation of permutations) assert.deepEqual(clusterVisitorLocations(permutation, 375), expected);
   assert.deepEqual(input, original, "Clustering must not sort or mutate the source statistics");
   assertConserved(expected, input);
 });
 
-test("mobile rendering leaves every final hit target separated and conserves all 200 location records", async (t) => {
+test("mobile rendering leaves every final visible circle separated and conserves all 200 location records", async (t) => {
   // Dense deterministic coverage exposes overlaps introduced when merged anchors move.
   const input = Array.from({ length: 200 }, (_, index) => location(
     `fixture-${String(index).padStart(3, "0")}`, `Fixture ${index}`,
@@ -101,10 +168,11 @@ test("mobile rendering leaves every final hit target separated and conserves all
   ));
   for (const width of [280, 320, 375, 720]) {
     await t.test(`map width ${width}px`, () => {
-      const clusters = clusterVisitorLocations(input, width, 36);
-      assert.ok(clusters.length > 0 && clusters.length < input.length, "Dense mobile points should be grouped");
+      const clusters = clusterVisitorLocations(input, width);
+      assert.ok(clusters.length > 0 && clusters.length <= input.length);
+      if (width <= 375) assert.ok(clusters.length < input.length, "Actually overlapping mobile circles should be grouped");
       assertConserved(clusters, input);
-      assertHitTargetsSeparated(clusters, width, 36);
+      assertVisibleCirclesSeparated(clusters, width);
     });
   }
 });
@@ -123,18 +191,18 @@ test("unknown, country-only, zero-view, missing, and out-of-map coordinates neve
     location("invalid-longitude", "Invalid", 10, 181, 50),
     location("non-finite", "Invalid", Number.NaN, 20, 50),
   ];
-  const clusters = clusterVisitorLocations([...excluded, valid], 375, 36);
+  const clusters = clusterVisitorLocations([...excluded, valid], 375);
   assertConserved(clusters, [valid]);
-  assert.deepEqual(clusterVisitorLocations(excluded, 375, 36), []);
-  assert.deepEqual(clusterVisitorLocations([], 375, 36), []);
+  assert.deepEqual(clusterVisitorLocations(excluded, 375), []);
+  assert.deepEqual(clusterVisitorLocations([], 375), []);
 });
 
 test("well-separated cities retain independently accessible markers", () => {
-  const clusters = clusterVisitorLocations(distant, 900, 30);
+  const clusters = clusterVisitorLocations(distant, 900);
   assert.equal(clusters.length, distant.length);
   assert.ok(clusters.every((cluster) => cluster.locations.length === 1));
   assertConserved(clusters, distant);
-  assertHitTargetsSeparated(clusters, 900, 30);
+  assertVisibleCirclesSeparated(clusters, 900);
 });
 
 test("more page views produce strictly larger dots against the same map maximum", () => {
@@ -159,8 +227,20 @@ test("very large page-view counts stay within the 6–26px visible dot bounds", 
 });
 
 test("merging Bellevue into Seattle visibly grows the 12-view dot to reflect all 13 views", () => {
-  const [merged] = clusterVisitorLocations([seattle, bellevue], 900, 30);
+  const [merged] = clusterVisitorLocations([seattle, bellevue], 900);
   assert.equal(merged.views, 13);
   assert.ok(visitorDotSize(merged.views, 44) > visitorDotSize(seattle.views, 44));
   assert.ok(visitorDotSize(merged.views, 44) < visitorDotSize(44, 44));
+});
+
+test("unrelated merges cannot shrink an existing circle by changing the normalization maximum", () => {
+  const first = { ...seattle, views: 40 };
+  const adjacent = { ...bellevue, views: 40 };
+  const independent = location("independent", "New York", 40.71, -74.01, 12);
+  const before = clusterVisitorLocations([first, independent], 900).find((cluster) => cluster.locations.some((point) => point.id === independent.id));
+  const input = [first, adjacent, independent];
+  const after = clusterVisitorLocations(input, 900);
+  assert.equal(after.find((cluster) => cluster.views === 80).diameter, 26);
+  assert.equal(after.find((cluster) => cluster.locations.some((point) => point.id === independent.id)).diameter, before.diameter);
+  assertConserved(after, input);
 });

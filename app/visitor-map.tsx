@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ANALYTICS_URL } from "./visitor-map-config";
 import { MAP_HEIGHT, MAP_WIDTH } from "./visitor-map-projection";
-import { clusterVisitorLocations, visitorDotSize } from "./visitor-map-clusters";
+import { clusterVisitorLocations } from "./visitor-map-clusters";
 import { loadVisitorStatistics } from "./visitor-map-client";
 import type { DetectedLocation, VisitorStats } from "./visitor-map-data";
 import "./visitor-map.css";
@@ -46,16 +46,23 @@ export default function VisitorMap() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
+  const hoverCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tooltipOffsetRef = useRef(0);
   const [tooltipOffset, setTooltipOffset] = useState(0);
-  const [mapLayout, setMapLayout] = useState({ width: MAP_WIDTH, markerSize: 30 });
+  const [mapLayout, setMapLayout] = useState({ width: MAP_WIDTH });
+
+  function cancelHoverClose() {
+    if (hoverCloseRef.current !== null) clearTimeout(hoverCloseRef.current);
+    hoverCloseRef.current = null;
+  }
+
+  useEffect(() => () => cancelHoverClose(), []);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const update = () => setMapLayout({
       width: map.getBoundingClientRect().width,
-      markerSize: window.matchMedia("(max-width: 760px)").matches ? 36 : 30,
     });
     const observer = new ResizeObserver(update);
     observer.observe(map);
@@ -106,8 +113,7 @@ export default function VisitorMap() {
   // A just-recorded visit can be milliseconds ahead of the visitor's clock.
   // Advance with wall time while never labelling that newest visit as old.
   const referenceTime = Math.max(Date.now(), Date.parse(stats?.updatedAt ?? "") || 0);
-  const points = useMemo(() => clusterVisitorLocations(stats?.locations ?? [], mapLayout.width, mapLayout.markerSize), [stats, mapLayout]);
-  const maximumViews = Math.max(1, ...points.map((point) => point.views));
+  const points = useMemo(() => clusterVisitorLocations(stats?.locations ?? [], mapLayout.width), [stats, mapLayout]);
   useEffect(() => {
     const ids = new Set(points.map((point) => point.id));
     setHoveredId((id) => id && ids.has(id) ? id : null);
@@ -159,7 +165,21 @@ export default function VisitorMap() {
       </div>
 
       <div className="visitor-map-frame" data-map-status={status}>
-        <div ref={mapRef} className="visitor-world" role="group" aria-label="Approximate locations of visits" style={{ aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}` }}>
+        <div ref={mapRef} className="visitor-world" role="group" aria-label="Approximate locations of visits" style={{ aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}` }}
+          onPointerUp={(event) => {
+            // Small dots remain distinct. A tap just beside one selects the
+            // nearest dot without adding overlapping invisible hit rectangles.
+            if (event.pointerType !== "touch" || (event.target instanceof Element && event.target.closest(".visitor-marker"))) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            let nearest: string | null = null;
+            let distance = 18;
+            for (const point of points) {
+              const next = Math.hypot(event.clientX - rect.left - point.x / MAP_WIDTH * rect.width, event.clientY - rect.top - point.y / MAP_HEIGHT * rect.height);
+              if (next < distance) { distance = next; nearest = point.id; }
+            }
+            setHoveredId(null);
+            setSelectedId(nearest);
+          }}>
           {/* The public-domain land layer and every marker use the same Miller projection. */}
           <img className="visitor-world-land" src="/world-land-dots.svg" width={MAP_WIDTH} height={MAP_HEIGHT} alt="Dotted world map" draggable={false} />
           {points.map((location) => {
@@ -176,18 +196,32 @@ export default function VisitorMap() {
               <button
                 key={location.id}
                 className={`visitor-marker${grouped ? " is-grouped" : ""}${recent ? " is-recent" : ""}${active ? " is-active" : ""}`}
-                style={{ left: `${location.x / MAP_WIDTH * 100}%`, top: `${location.y / MAP_HEIGHT * 100}%` }}
+                style={{ left: `${location.x / MAP_WIDTH * 100}%`, top: `${location.y / MAP_HEIGHT * 100}%`, width: location.diameter, height: location.diameter }}
                 type="button"
                 aria-label={`${label}: ${formatCount(location.views)} ${location.views === 1 ? "page view" : "page views"}.${grouped ? ` ${breakdown}.` : ""} Approximate location.`}
                 aria-expanded={active}
-                onPointerEnter={(event) => { if (event.pointerType !== "touch") setHoveredId(location.id); }}
-                onPointerLeave={() => setHoveredId(null)}
-                onFocus={() => { setHoveredId(null); setSelectedId(location.id); }}
+                onPointerEnter={(event) => {
+                  if (event.pointerType === "touch") return;
+                  cancelHoverClose();
+                  setHoveredId(location.id);
+                }}
+                onPointerLeave={() => {
+                  cancelHoverClose();
+                  // Give the pointer time to cross the curved edge into the
+                  // detail panel without enlarging the circle's hit area.
+                  hoverCloseRef.current = setTimeout(() => {
+                    setHoveredId((id) => id === location.id ? null : id);
+                    hoverCloseRef.current = null;
+                  }, 160);
+                }}
+                onFocus={() => { cancelHoverClose(); setHoveredId(null); setSelectedId(location.id); }}
                 onBlur={() => setSelectedId((id) => id === location.id ? null : id)}
                 onClick={() => setSelectedId(location.id)}
-                onKeyDown={(event) => { if (event.key === "Escape") { setSelectedId(null); setHoveredId(null); } }}
+                onKeyDown={(event) => { if (event.key === "Escape") { cancelHoverClose(); setSelectedId(null); setHoveredId(null); } }}
               >
-                <span className="visitor-marker-dot" aria-hidden="true" style={{ width: visitorDotSize(location.views, maximumViews), height: visitorDotSize(location.views, maximumViews) }} />
+                <svg className="visitor-marker-dot" aria-hidden="true" focusable="false" viewBox={`0 0 ${location.diameter} ${location.diameter}`}>
+                  <circle cx={location.diameter / 2} cy={location.diameter / 2} r={(location.diameter - (grouped ? 2 : 1)) / 2} strokeWidth={grouped ? 2 : 1} />
+                </svg>
                 {active && <span ref={tooltipRef} style={{ translate: `0 ${tooltipOffset}px` }} className={`visitor-tooltip visitor-tooltip-${horizontal}${below ? " visitor-tooltip-below" : ""}${grouped ? " visitor-tooltip-group" : ""}`} role="tooltip">
                   <strong>{label}</strong><span>{formatCount(location.views)} {location.views === 1 ? "page view" : "page views"}{grouped ? " in total" : ""}</span>
                   {grouped && <span className="visitor-tooltip-locations">{location.locations.map((entry) => <span className="visitor-tooltip-location" key={entry.id}><span>{locationName(entry, stats)}</span><b>{formatCount(entry.views)}</b></span>)}</span>}
@@ -230,7 +264,7 @@ export default function VisitorMap() {
         </div> : <p className="visitor-region-empty">{status === "loading" ? "Loading regional statistics…" : "Regional statistics are not available yet."}</p>}
       </details>
 
-      <p className="visitor-map-note">Hover, focus, or tap a point for local page views. Nearby locations share a point with separate counts. Totals include repeat visits and visits without a detailed location; locations are approximate.</p>
+      <p className="visitor-map-note">Hover, focus, or tap a point for local page views. Overlapping dots share a point with separate counts. Totals include repeat visits and visits without a detailed location; locations are approximate.</p>
       <p className="visitor-map-note visitor-map-credit">Statistics hosted on Cloudflare.{started ? ` New statistics began ${started}.` : " A new record begins with this migration."} Map data: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth<span className="sr-only"> (opens in a new tab)</span></a>.</p>
       <noscript><p className="visitor-map-note">Enable JavaScript to load live visitor counts. The map background is available without it.</p></noscript>
     </section>
