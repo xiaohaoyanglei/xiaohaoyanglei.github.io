@@ -4,12 +4,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import worker, { locationFromCf } from "./worker.mjs";
 
 const schema = readFileSync(new URL("./schema.sql", import.meta.url), "utf8");
 const ORIGIN = "https://xiaohaoyanglei.github.io";
 const AU_FIXTURE = { country: "AU", region: "Victoria", city: "Melbourne", latitude: "-37.814", longitude: "144.96332" };
+const RELAY_SECRET = "test-fixture-only-not-a-deployment-secret-0123456789";
+const CN_FIXTURE = { country: "CN", region: "Shanghai", city: "Shanghai", latitude: 31.2222, longitude: 121.4581 };
+
+function relayPayload(overrides = {}) {
+  return { eventId: randomUUID(), timestamp: Date.now(), location: CN_FIXTURE, rateKey: "ab".repeat(32), ...overrides };
+}
+
+function relaySignature(raw) {
+  return createHmac("sha256", RELAY_SECRET).update(raw, "utf8").digest("hex");
+}
 
 function database(t) {
   const sqlite = new DatabaseSync(":memory:");
@@ -47,6 +57,16 @@ function request(path, { cf, body, origin = ORIGIN, method = body ? "POST" : "GE
 async function call(db, path, options, extraEnv = {}) {
   const response = await worker.fetch(request(path, options), { DB: db, ...extraEnv });
   return { response, json: response.status === 204 ? null : await response.json() };
+}
+
+async function relayCall(db, payload = relayPayload(), options = {}, extraEnv = {}) {
+  const raw = typeof payload === "string" ? payload : JSON.stringify(payload);
+  return call(db, "/relay/visit", {
+    ...options,
+    method: "POST",
+    body: raw,
+    headers: { "X-Visitor-Relay-Signature": relaySignature(raw), ...options.headers },
+  }, { ANALYTICS_RELAY_SECRET: RELAY_SECRET, ...extraEnv });
 }
 
 test("empty stats and /location require no invented visitor or coordinates", async t => {
@@ -168,4 +188,191 @@ test("location responses are bounded and the ordered read uses its index", async
   const plan = db.sqlite.prepare("EXPLAIN QUERY PLAN SELECT id, views FROM location_aggregates ORDER BY views DESC, id LIMIT 200").all();
   assert.ok(plan.some(row => row.detail.includes("locations_by_views")));
   assert.ok(!plan.some(row => row.detail.includes("TEMP B-TREE")));
+});
+
+test("authenticated relay geography uses the shared normalization and ignores direct metadata", async t => {
+  const db = database(t);
+  const result = await relayCall(db, relayPayload({ location: { ...CN_FIXTURE, country: "cn", city: " Shanghai\u0000 " } }), {
+    cf: AU_FIXTURE,
+    headers: { "CF-IPCountry": "US", "X-Country": "GB" },
+  });
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(result.json.detectedLocation, { ...CN_FIXTURE, latitude: 31.22, longitude: 121.46 });
+  assert.deepEqual(result.json.stats.countries, [{ code: "CN", views: 1 }]);
+  assert.equal(result.json.stats.total, 1);
+  assert.equal(result.json.stats.locations[0].city, "Shanghai");
+  assert.equal(result.response.headers.get("Access-Control-Allow-Origin"), ORIGIN);
+});
+
+test("relay unknown and country-only locations never acquire invented map coordinates", async t => {
+  const db = database(t);
+  const unknown = { country: null, region: null, city: null, latitude: null, longitude: null };
+  const first = await relayCall(db, relayPayload({ location: unknown }));
+  assert.equal(first.response.status, 200);
+  assert.deepEqual(first.json.detectedLocation, unknown);
+  assert.equal(first.json.stats.unknown, 1);
+  const countryOnly = { ...unknown, country: "CN" };
+  const second = await relayCall(db, relayPayload({ location: countryOnly }));
+  assert.equal(second.response.status, 200);
+  assert.deepEqual(second.json.detectedLocation, countryOnly);
+  const unrecognized = await relayCall(db, relayPayload({ location: { ...CN_FIXTURE, country: "XX" } }));
+  assert.deepEqual(unrecognized.json.detectedLocation, unknown);
+  assert.equal(unrecognized.json.stats.unknown, 2);
+  assert.equal(unrecognized.json.stats.total, 3);
+});
+
+test("direct and relay visits share exact event deduplication in either arrival order", async t => {
+  for (const relayFirst of [false, true]) {
+    await t.test(relayFirst ? "relay then direct" : "direct then relay", async t => {
+      const db = database(t);
+      const eventId = randomUUID();
+      const direct = () => call(db, "/visit", { body: { eventId }, cf: AU_FIXTURE });
+      const relay = () => relayCall(db, relayPayload({ eventId: eventId.toUpperCase() }));
+      const first = await (relayFirst ? relay() : direct());
+      const second = await (relayFirst ? direct() : relay());
+      const retry = await relay();
+      for (const result of [first, second, retry]) {
+        assert.equal(result.response.status, 200);
+        assert.equal(result.json.stats.total, 1);
+        assert.deepEqual(result.json.stats.countries, [{ code: relayFirst ? "CN" : "AU", views: 1 }]);
+        assert.equal(result.json.stats.locations.length, 1);
+        assert.equal(result.json.stats.locations[0].views, 1);
+      }
+      assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM event_receipts").get().n, 1);
+      assert.equal(db.sqlite.prepare("SELECT event_id FROM event_receipts").get().event_id, eventId);
+    });
+  }
+});
+
+test("relay HMAC verifies original bytes before parsing and rejects absent, malformed or altered signatures", async t => {
+  const db = database(t);
+  const raw = JSON.stringify(relayPayload());
+  const signature = relaySignature(raw);
+  let limitCalls = 0;
+  const extraEnv = { RATE_LIMITER: { async limit() { limitCalls++; return { success: true }; } } };
+  for (const [body, invalidSignature] of [
+    [raw, ""], [raw, "0".repeat(64)], [raw, "a".repeat(63)], [raw, "g".repeat(64)],
+    [raw, signature.toUpperCase()], [`${raw} `, signature], ["{bad", signature],
+  ]) {
+    const result = await relayCall(db, body, { headers: { "X-Visitor-Relay-Signature": invalidSignature } }, extraEnv);
+    assert.equal(result.response.status, 401);
+    assert.equal(result.response.headers.get("Access-Control-Allow-Origin"), ORIGIN);
+  }
+  const wrongSecret = await relayCall(db, raw, {}, { ANALYTICS_RELAY_SECRET: `${RELAY_SECRET}-different` });
+  assert.equal(wrongSecret.response.status, 401);
+  assert.equal(limitCalls, 0);
+  assert.equal((await call(db, "/stats")).json.total, 0);
+  // Whitespace is legitimate only when included in the authenticated bytes.
+  assert.equal((await relayCall(db, `\n${raw}\n`)).response.status, 200);
+});
+
+test("relay requires a recent integer timestamp even with a correct MAC", async t => {
+  const db = database(t);
+  for (const timestamp of [Date.now() - 360000, Date.now() + 360000]) {
+    assert.equal((await relayCall(db, relayPayload({ timestamp }))).response.status, 401);
+  }
+  for (const timestamp of [String(Date.now()), Date.now() + 0.5, null, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal((await relayCall(db, relayPayload({ timestamp }))).response.status, 400);
+  }
+  assert.equal((await call(db, "/stats")).json.total, 0);
+  for (const timestamp of [Date.now() - 290000, Date.now() + 290000]) {
+    assert.equal((await relayCall(db, relayPayload({ timestamp }))).response.status, 200);
+  }
+  assert.equal((await call(db, "/stats")).json.total, 2);
+});
+
+test("signed relay rejects extra fields, malformed shapes, nonnumeric coordinates and invalid rate keys", async t => {
+  const db = database(t);
+  const base = relayPayload();
+  const missingTimestamp = { ...base };
+  delete missingTimestamp.timestamp;
+  const missingCity = { ...CN_FIXTURE };
+  delete missingCity.city;
+  const malformed = [
+    "{bad", "null", "[]", { ...base, country: "AU" }, missingTimestamp,
+    { ...base, eventId: "bad" }, { ...base, location: null }, { ...base, location: [] },
+    { ...base, location: missingCity }, { ...base, location: { ...CN_FIXTURE, ip: "192.0.2.1" } },
+    ...[
+      { country: 42 }, { country: "China" }, { region: {} }, { city: true },
+      { latitude: "31.22" }, { latitude: 91 }, { longitude: -181 }, { longitude: false },
+    ].map(changes => ({ ...base, location: { ...CN_FIXTURE, ...changes } })),
+    ...[null, 42, "a".repeat(63), "A".repeat(64), "z".repeat(64), "192.0.2.1"].map(rateKey => ({ ...base, rateKey })),
+  ];
+  for (const payload of malformed) {
+    const result = await relayCall(db, payload);
+    assert.equal(result.response.status, 400, JSON.stringify(payload));
+  }
+  assert.equal((await call(db, "/stats")).json.total, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM event_receipts").get().n, 0);
+});
+
+test("relay shares JSON content type and streamed body bounds", async t => {
+  const db = database(t);
+  const large = relayPayload({ location: { ...CN_FIXTURE, city: "x".repeat(1025) } });
+  assert.equal((await relayCall(db, large)).response.status, 413);
+  assert.equal((await relayCall(db, relayPayload(), { headers: { "Content-Length": "1025" } })).response.status, 413);
+  assert.equal((await relayCall(db, relayPayload(), { headers: { "Content-Type": "text/plain" } })).response.status, 415);
+  assert.equal((await call(db, "/stats")).json.total, 0);
+});
+
+test("relay fails closed without a sufficiently long secret while direct endpoints remain available", async t => {
+  const db = database(t);
+  for (const ANALYTICS_RELAY_SECRET of [undefined, null, 42, "", "x".repeat(31)]) {
+    const result = await relayCall(db, relayPayload(), {}, { ANALYTICS_RELAY_SECRET });
+    assert.equal(result.response.status, 503);
+    assert.equal(result.response.headers.get("Access-Control-Allow-Origin"), ORIGIN);
+  }
+  assert.equal((await call(db, "/stats")).json.total, 0);
+  assert.equal((await call(db, "/location", { cf: AU_FIXTURE })).json.country, "AU");
+  assert.equal((await call(db, "/visit", { body: { eventId: randomUUID() }, cf: AU_FIXTURE })).response.status, 200);
+});
+
+test("relay rate limiting uses only the authenticated pseudonymous key and writes nothing on rejection", async t => {
+  const db = database(t);
+  const payload = relayPayload();
+  const keys = [];
+  const limiter = { async limit({ key }) { keys.push(key); return { success: false }; } };
+  for (const headers of [{}, { "CF-Connecting-IP": "192.0.2.123" }]) {
+    const result = await relayCall(db, payload, { headers }, { RATE_LIMITER: limiter });
+    assert.equal(result.response.status, 429);
+    assert.equal(result.response.headers.get("Retry-After"), "60");
+  }
+  assert.deepEqual(keys, [`relay:${payload.rateKey}`, `relay:${payload.rateKey}`]);
+  assert.equal((await call(db, "/stats")).json.total, 0);
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM event_receipts").get().n, 0);
+});
+
+test("relay SQL failure rolls back receipts and all aggregates, allowing the same event to retry", async t => {
+  const db = database(t);
+  db.sqlite.exec("CREATE TRIGGER reject_relay_location BEFORE INSERT ON location_aggregates BEGIN SELECT RAISE(ABORT, 'test failure'); END");
+  const payload = relayPayload();
+  const failed = await relayCall(db, payload);
+  assert.equal(failed.response.status, 503);
+  assert.equal(failed.response.headers.get("Access-Control-Allow-Origin"), ORIGIN);
+  for (const table of ["event_receipts", "country_aggregates", "location_aggregates"]) {
+    assert.equal(db.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n, 0);
+  }
+  assert.equal((await call(db, "/stats")).json.total, 0);
+  db.sqlite.exec("DROP TRIGGER reject_relay_location");
+  const retry = await relayCall(db, { ...payload, timestamp: Date.now() });
+  assert.equal(retry.response.status, 200);
+  assert.equal(retry.json.stats.total, 1);
+  const directRetry = await call(db, "/visit", { body: { eventId: payload.eventId }, cf: AU_FIXTURE });
+  assert.deepEqual(directRetry.json.stats.countries, [{ code: "CN", views: 1 }]);
+  assert.equal(directRetry.json.stats.total, 1);
+});
+
+test("relay requires an allowed Origin and exposes only its signature header in preflight", async t => {
+  const db = database(t);
+  for (const origin of [null, "null", "https://attacker.example"]) {
+    assert.equal((await relayCall(db, relayPayload(), { origin })).response.status, 403);
+  }
+  const headers = { "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type, x-visitor-relay-signature" };
+  const preflight = await call(db, "/relay/visit", { method: "OPTIONS", headers });
+  assert.equal(preflight.response.status, 204);
+  assert.equal(preflight.response.headers.get("Access-Control-Allow-Headers"), "Content-Type, X-Visitor-Relay-Signature");
+  assert.equal((await call(db, "/visit", { method: "OPTIONS", headers })).response.status, 403);
+  assert.equal((await call(db, "/relay/visit", { method: "OPTIONS", headers: { ...headers, "Access-Control-Request-Headers": "x-country" } })).response.status, 403);
+  assert.equal((await call(db, "/relay/visit")).response.status, 405);
+  assert.equal((await call(db, "/stats")).json.total, 0);
 });

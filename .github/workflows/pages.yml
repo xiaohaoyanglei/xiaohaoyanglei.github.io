@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Check visitor statistics and map
-        run: node --test analytics/worker.test.mjs analytics/visitor-map-clusters.test.mjs
+        run: node --test analytics/worker.test.mjs analytics/visitor-map-clusters.test.mjs analytics/visitor-map-client.test.mjs analytics/netlify/analytics.test.mjs
       - name: Check TypeScript
         run: npm run typecheck
       - name: Build static homepage

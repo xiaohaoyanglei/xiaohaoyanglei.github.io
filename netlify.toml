@@ -1,0 +1,15 @@
+# Netlify hosts only the analytics relay. GitHub Actions publishes the homepage.
+[build]
+  publish = "analytics/netlify/public"
+  edge_functions = "analytics/netlify/edge-functions"
+
+[[edge_functions]]
+  function = "analytics"
+  path = "/analytics/*"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Robots-Tag = "noindex, nofollow"

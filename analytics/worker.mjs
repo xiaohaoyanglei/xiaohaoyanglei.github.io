@@ -2,6 +2,8 @@
 const SITE_ORIGIN = "https://xiaohaoyanglei.github.io";
 const RECEIPT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_BODY_BYTES = 1024;
+const RELAY_CLOCK_WINDOW_MS = 5 * 60 * 1000;
+const HEX_256 = /^[0-9a-f]{64}$/;
 const LOCATION_LIMIT = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COUNTRIES = new Set(("AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW").split(" "));
@@ -50,7 +52,8 @@ function coordinate(value, max) {
 }
 
 export function locationFromCf(cf) {
-  // Never accept headers/body/query parameters as a substitute for request.cf.
+  // Direct visits use request.cf only. Relay metadata must be authenticated
+  // before it reaches this shared provider-location normalizer.
   const candidate = typeof cf?.country === "string" ? cf.country.toUpperCase() : "";
   const country = COUNTRIES.has(candidate) ? candidate : null;
   if (!country) return { country: null, region: null, city: null, latitude: null, longitude: null };
@@ -85,7 +88,29 @@ function statsFromResults(results) {
   };
 }
 
-async function readBody(request) {
+function hasExactKeys(value, keys) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) &&
+    Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+
+function validRelayLocation(location) {
+  return hasExactKeys(location, ["country", "region", "city", "latitude", "longitude"]) &&
+    (location.country === null || (typeof location.country === "string" && /^[a-z]{2}$/i.test(location.country))) &&
+    [location.region, location.city].every(value => value === null || typeof value === "string") &&
+    [[location.latitude, 90], [location.longitude, 180]].every(([value, maximum]) =>
+      value === null || (typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= maximum));
+}
+
+async function verifyRelaySignature(request, bytes, secret) {
+  const signature = request.headers.get("X-Visitor-Relay-Signature") || "";
+  if (!HEX_256.test(signature)) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const signatureBytes = Uint8Array.from(signature.match(/../g), pair => parseInt(pair, 16));
+  // Web Crypto verifies the MAC without a timing-sensitive JavaScript comparison.
+  return crypto.subtle.verify("HMAC", key, signatureBytes, bytes);
+}
+
+async function readBody(request, relaySecret) {
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("Content-Type") || "")) {
     return { error: "Expected application/json", status: 415 };
   }
@@ -108,8 +133,24 @@ async function readBody(request) {
     const bytes = new Uint8Array(size);
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    const body = JSON.parse(new TextDecoder().decode(bytes));
-    if (!body || Array.isArray(body) || Object.keys(body).length !== 1 ||
+    if (relaySecret !== undefined && !(await verifyRelaySignature(request, bytes, relaySecret))) {
+      return { error: "Invalid relay signature", status: 401 };
+    }
+    const body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (relaySecret !== undefined) {
+      if (!hasExactKeys(body, ["eventId", "timestamp", "location", "rateKey"]) ||
+          typeof body.eventId !== "string" || !UUID.test(body.eventId) ||
+          !Number.isSafeInteger(body.timestamp) ||
+          typeof body.rateKey !== "string" || !HEX_256.test(body.rateKey) ||
+          !validRelayLocation(body.location)) {
+        return { error: "Invalid relay payload", status: 400 };
+      }
+      if (Math.abs(Date.now() - body.timestamp) > RELAY_CLOCK_WINDOW_MS) {
+        return { error: "Expired relay timestamp", status: 401 };
+      }
+      return { eventId: body.eventId.toLowerCase(), rateKey: body.rateKey, location: locationFromCf(body.location) };
+    }
+    if (!hasExactKeys(body, ["eventId"]) ||
         typeof body.eventId !== "string" || !UUID.test(body.eventId)) {
       return { error: "Expected only a valid UUID eventId", status: 400 };
     }
@@ -122,43 +163,47 @@ export default {
     const origin = request.headers.get("Origin");
     const path = new URL(request.url).pathname;
     if (origin && !allowedOrigin(origin, env)) return respond(request, env, { error: "Origin not allowed" }, 403);
-    if (!["/location", "/stats", "/visit"].includes(path)) return respond(request, env, { error: "Not found" }, 404);
-    const method = path === "/visit" ? "POST" : "GET";
+    if (!["/location", "/stats", "/visit", "/relay/visit"].includes(path)) return respond(request, env, { error: "Not found" }, 404);
+    const isRelay = path === "/relay/visit";
+    const method = path === "/visit" || isRelay ? "POST" : "GET";
 
     if (request.method === "OPTIONS") {
       if (!origin || request.headers.get("Access-Control-Request-Method") !== method) {
         return respond(request, env, { error: "Preflight not allowed" }, 403);
       }
       const requested = (request.headers.get("Access-Control-Request-Headers") || "").split(",").map(header => header.trim().toLowerCase()).filter(Boolean);
-      if (requested.some(header => header !== "content-type")) return respond(request, env, { error: "Headers not allowed" }, 403);
+      if (requested.some(header => header !== "content-type" && !(isRelay && header === "x-visitor-relay-signature"))) return respond(request, env, { error: "Headers not allowed" }, 403);
       return respond(request, env, null, 204, {
         "Access-Control-Allow-Methods": `${method}, OPTIONS`,
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": isRelay ? "Content-Type, X-Visitor-Relay-Signature" : "Content-Type",
         "Access-Control-Max-Age": "86400",
       });
     }
     if (request.method !== method) return respond(request, env, { error: "Method not allowed" }, 405, { Allow: `${method}, OPTIONS` });
     if (path === "/location") return respond(request, env, locationFromCf(request.cf));
-    if (path === "/visit" && !origin) return respond(request, env, { error: "Origin required" }, 403);
+    if (method === "POST" && !origin) return respond(request, env, { error: "Origin required" }, 403);
+    if (isRelay && (typeof env.ANALYTICS_RELAY_SECRET !== "string" || env.ANALYTICS_RELAY_SECRET.length < 32)) {
+      return respond(request, env, { error: "Relay unavailable" }, 503);
+    }
 
     try {
       if (!env.DB) return respond(request, env, { error: "Statistics unavailable" }, 503);
       if (path === "/stats") return respond(request, env, statsFromResults(await env.DB.batch(statsStatements(env.DB))));
 
-      const body = await readBody(request);
+      const body = await readBody(request, isRelay ? env.ANALYTICS_RELAY_SECRET : undefined);
       if (body.error) return respond(request, env, { error: body.error }, body.status);
       // Optional Cloudflare Rate Limiting binding. Only a daily hash is passed;
       // raw IP/UA is never persisted by this Worker. Origin alone is not auth.
       if (env.RATE_LIMITER) {
         const ip = request.headers.get("CF-Connecting-IP");
-        if (ip) {
-          const key = await digest(`${new Date().toISOString().slice(0, 10)}:${ip}`);
+        if (isRelay || ip) {
+          const key = isRelay ? `relay:${body.rateKey}` : await digest(`${new Date().toISOString().slice(0, 10)}:${ip}`);
           if (!(await env.RATE_LIMITER.limit({ key })).success) {
             return respond(request, env, { error: "Too many requests" }, 429, { "Retry-After": "60" });
           }
         }
       }
-      const location = locationFromCf(request.cf);
+      const location = isRelay ? body.location : locationFromCf(request.cf);
       const locationId = await digest(JSON.stringify(location));
       const now = Date.now();
       const seenAt = new Date(now).toISOString();

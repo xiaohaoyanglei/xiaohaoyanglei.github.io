@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ANALYTICS_URL } from "./visitor-map-config";
+import { ANALYTICS_URLS } from "./visitor-map-config";
 import { MAP_HEIGHT, MAP_WIDTH } from "./visitor-map-projection";
 import { clusterVisitorLocations } from "./visitor-map-clusters";
 import { loadVisitorStatistics } from "./visitor-map-client";
@@ -38,7 +38,7 @@ function readableDate(value: string | null): string | null {
 const formatCount = (count: number) => new Intl.NumberFormat("en").format(count);
 
 export default function VisitorMap() {
-  const [status, setStatus] = useState<Status>(ANALYTICS_URL ? "loading" : "unconfigured");
+  const [status, setStatus] = useState<Status>(ANALYTICS_URLS.some((base) => base.trim()) ? "loading" : "unconfigured");
   const [stats, setStats] = useState<VisitorStats | null>(null);
   const [detected, setDetected] = useState<DetectedLocation | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -72,10 +72,9 @@ export default function VisitorMap() {
   }, []);
 
   useEffect(() => {
-    const base = ANALYTICS_URL.trim().replace(/\/+$/, "");
-    if (!base) return;
+    if (!ANALYTICS_URLS.some((base) => base.trim())) return;
     let disposed = false;
-    const load = loadVisitorStatistics(base, shouldRecordVisit());
+    const load = loadVisitorStatistics(ANALYTICS_URLS, shouldRecordVisit());
     load.then((result) => {
       if (disposed) return;
       setStats(result.stats);
@@ -187,9 +186,17 @@ export default function VisitorMap() {
             const lastSeen = location.lastSeen ? Date.parse(location.lastSeen) : Number.NaN;
             const age = referenceTime - lastSeen;
             const recent = Number.isFinite(age) && age >= 0 && age <= 24 * 60 * 60 * 1000;
-            const grouped = location.locations.length > 1;
-            const label = grouped ? `${location.locations.length} nearby locations` : locationName(location.locations[0], stats);
-            const breakdown = location.locations.map((entry) => `${locationName(entry, stats)}: ${formatCount(entry.views)}`).join("; ");
+            // Providers can return slightly different coordinates for the same
+            // city. Preserve circle geometry, but show one summed detail row.
+            const cityViews = new Map<string, number>();
+            for (const entry of location.locations) {
+              const name = locationName(entry, stats);
+              cityViews.set(name, (cityViews.get(name) ?? 0) + entry.views);
+            }
+            const cities = [...cityViews].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+            const grouped = cities.length > 1;
+            const label = grouped ? `${cities.length} nearby locations` : cities[0][0];
+            const breakdown = cities.map(([name, views]) => `${name}: ${formatCount(views)}`).join("; ");
             const horizontal = location.x < MAP_WIDTH * 0.25 ? "start" : location.x > MAP_WIDTH * 0.75 ? "end" : "center";
             const below = location.y < MAP_HEIGHT * 0.25;
             return (
@@ -224,7 +231,7 @@ export default function VisitorMap() {
                 </svg>
                 {active && <span ref={tooltipRef} style={{ translate: `0 ${tooltipOffset}px` }} className={`visitor-tooltip visitor-tooltip-${horizontal}${below ? " visitor-tooltip-below" : ""}${grouped ? " visitor-tooltip-group" : ""}`} role="tooltip">
                   <strong>{label}</strong><span>{formatCount(location.views)} {location.views === 1 ? "page view" : "page views"}{grouped ? " in total" : ""}</span>
-                  {grouped && <span className="visitor-tooltip-locations">{location.locations.map((entry) => <span className="visitor-tooltip-location" key={entry.id}><span>{locationName(entry, stats)}</span><b>{formatCount(entry.views)}</b></span>)}</span>}
+                  {grouped && <span className="visitor-tooltip-locations">{cities.map(([name, views]) => <span className="visitor-tooltip-location" key={name}><span>{name}</span><b>{formatCount(views)}</b></span>)}</span>}
                   <small>Approximate location{grouped ? "s · Page views by location" : ""}</small>
                 </span>}
               </button>
