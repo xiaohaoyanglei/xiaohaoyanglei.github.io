@@ -2,7 +2,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="440" viewBox="0 0 900 440">
   <title>World land dotted map</title>
   <desc>Natural Earth public-domain 1:110m land data. Miller cylindrical projection, longitude -180 to 180 and latitude -60 to 85 degrees. Antarctica omitted.</desc>
-  <g fill="#d6d3ca">
+  <g fill="#2b3a64">
     <circle cx="357" cy="9" r="1.35"/>
     <circle cx="363" cy="9" r="1.35"/>
     <circle cx="369" cy="9" r="1.35"/>

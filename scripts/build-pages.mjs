@@ -43,7 +43,7 @@ if (!canonical || new URL(canonical).href !== origin.href) {
   throw new Error("The exported homepage has an unexpected canonical URL.");
 }
 await Promise.all(
-  ["portrait-monash.jpg", "xiaohaoyang-lei-cv.pdf", "og.png", "404.html"].map((path) =>
+  ["portrait-monash.jpg", "portrait-crop.jpg", "xiaohaoyang-lei-cv.pdf", "og.png", "404.html"].map((path) =>
     access(new URL(path, output)),
   ),
 );

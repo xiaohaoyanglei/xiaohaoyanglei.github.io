@@ -1,7 +1,7 @@
 # Xiaohaoyang Lei — Academic Homepage
 
-Academic profile, research, publications, experience, curriculum vitae, and a
-live visitor map.
+Academic profile, news, publications, research, background, curriculum vitae,
+and a live visitor map, in a dark night theme.
 
 **Website:** https://xiaohaoyanglei.github.io/
 
@@ -102,12 +102,54 @@ through the frontend after changing the backend or geography handling.
 
 ## Editing
 
-- Profile content and section order: `app/page.tsx`
-- Page styling: `app/globals.css`
+The page is laid out like a paper. The title page (name, affiliations, links,
+a two-sentence abstract, index terms and Figure 1) is meant to be read in a few
+seconds; numbered sections below hold the details: 1 News, 2 Publications
+(numbered references), 3 Research, 4 Background (Table 1), and Appendix A
+(visitor map).
+
+- **All text** (affiliations, abstract, index terms, news, publications with
+  BibTeX, education, experience, teaching, honours): `app/content.ts`. Add a
+  news item or a paper there; the page picks it up. Only the newest
+  `visibleNews` items show; the rest fold under "Earlier news". A paper's
+  `links` array takes extra buttons such as `{ label: "arXiv", href: "…" }`; a
+  `DOI` link also makes the title clickable. `venueShort` is what citation
+  previews show.
+- Section order and the Research paragraphs: `app/page.tsx`
+- Page styling and the night palette (CSS variables at the top): `app/globals.css`
 - Visitor-map layout and embed: `app/visitor-map.tsx`, `app/visitor-map.css`
-- Photo, CV, and decorative artwork: `public/`
+- Photo, CV, and social preview image: `public/` (`portrait-crop.jpg` is the
+  Figure 1 photo, a 4:5 crop of `portrait-monash.jpg`; `og.png` is the link
+  preview)
 - Static-build configuration: `next.config.ts`, `scripts/build-pages.mjs`
 - Deployment workflow: `.github/workflows/pages.yml`
+
+### Interactive details
+
+- `app/sampled-portrait.tsx`: Figure 1. On each visit the photo is denoised
+  from Gaussian noise (40 steps, cosine schedule, coarse-to-fine), and
+  snapshots at t = 1000, 600 and 300 drop into the strip beside it.
+  *Resample* replays it with a new seed. With reduced motion the snapshots are
+  drawn once, without animation.
+- `app/running-head.tsx`: journal-style running head; the author and current
+  section appear once the title has scrolled away.
+- `app/moon-mark.tsx`: the moon in the running head shows the real lunar phase
+  (Meeus' low-precision formula), mirrored for the southern hemisphere.
+- `app/contents.tsx`: table of contents in the left margin on wide screens
+  ("Contents" menu on narrow ones).
+- `app/chapter-scrubber.tsx`: reading progress as a video scrubber, one
+  segment per section.
+- `app/cite.tsx`: in-text citations such as [2] preview the reference on
+  hover or keyboard focus.
+- `app/world-model-toy.tsx`: Figure 2, a small action-conditioned "world
+  model"; each action denoises the next frame into a film strip.
+- `app/paper-teaser.tsx`: schematic input → output drawings for each paper,
+  revealed with a wipe on hover or tap.
+- `app/starfield.tsx`: the fixed night sky behind the page.
+
+Fonts (Source Serif 4, IBM Plex Sans, IBM Plex Mono) are self-hosted from npm
+packages through `next/font/local`, so the page makes no requests to Google
+Fonts, which are unreliable in mainland China.
 
 Keep private credentials out of source files and public client configuration.
 This repository contains only the standalone homepage source and assets; it

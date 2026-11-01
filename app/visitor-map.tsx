@@ -122,7 +122,7 @@ export default function VisitorMap() {
     const reposition = () => {
       const tooltip = tooltipRef.current;
       if (!tooltip) return;
-      const headerBottom = document.querySelector(".site-header-shell")?.getBoundingClientRect().bottom ?? 0;
+      const headerBottom = document.querySelector(".site-header")?.getBoundingClientRect().bottom ?? 0;
       const topLimit = Math.max(12, headerBottom + 10);
       const marker = mapRef.current?.querySelector(".visitor-marker.is-active")?.getBoundingClientRect();
       if (marker && (marker.bottom < topLimit || marker.top > window.innerHeight)) {
@@ -150,13 +150,7 @@ export default function VisitorMap() {
   }
 
   return (
-    <section className="visitor-section" id="visitors" aria-labelledby="visitors-title">
-      <div className="visitor-heading">
-        <p className="section-index">07 / Visitors</p>
-        <h2 id="visitors-title">Visitors around the world</h2>
-        <p>A record of visits to this academic homepage.</p>
-      </div>
-
+    <div className="visitor-section">
       <div className="visitor-summary" aria-label="Visitor statistics" aria-busy={status === "loading"}>
         <div className="visitor-metric visitor-metric-total"><strong>{stats ? formatCount(stats.total) : "—"}</strong><span>Total page views</span></div>
         <div className="visitor-metric"><strong>{stats ? formatCount(countryCount) : "—"}</strong><span>Countries / regions</span></div>
@@ -274,6 +268,6 @@ export default function VisitorMap() {
       <p className="visitor-map-note">Hover, focus, or tap a point for local page views. Overlapping dots share a point with separate counts. Totals include repeat visits and visits without a detailed location; locations are approximate.</p>
       <p className="visitor-map-note visitor-map-credit">Statistics hosted on Cloudflare.{started ? ` New statistics began ${started}.` : " A new record begins with this migration."} Map data: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth<span className="sr-only"> (opens in a new tab)</span></a>.</p>
       <noscript><p className="visitor-map-note">Enable JavaScript to load live visitor counts. The map background is available without it.</p></noscript>
-    </section>
+    </div>
   );
 }

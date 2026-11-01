@@ -1,24 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { chapters, profile } from "./content";
 
+// "Contents" menu for screens too narrow for the margin table of contents.
 export default function MobileNavigation() {
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
 
-  const closeMenu = () => {
-    setOpen(false);
-  };
-
   useEffect(() => {
+    if (!open) return;
     const closeOnOutsidePress = (event: PointerEvent) => {
-      const menu = menuRef.current;
-
-      if (open && menu && !menu.contains(event.target as Node)) {
-        closeMenu();
-      }
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false);
     };
-
     document.addEventListener("pointerdown", closeOnOutsidePress);
     return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
   }, [open]);
@@ -28,9 +22,7 @@ export default function MobileNavigation() {
       className={`mobile-menu${open ? " is-open" : ""}`}
       ref={menuRef}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          closeMenu();
-        }
+        if (event.key === "Escape") setOpen(false);
       }}
     >
       <button
@@ -40,34 +32,19 @@ export default function MobileNavigation() {
         aria-controls="mobile-navigation-panel"
         onClick={() => setOpen((current) => !current)}
       >
-        <span>Menu</span>
-        <span className="menu-symbol" aria-hidden="true">
-          +
-        </span>
+        Contents
       </button>
       {open ? (
-        <nav className="mobile-menu-panel" id="mobile-navigation-panel" aria-label="Mobile navigation">
-          <a href="#interests" onClick={closeMenu}>
-            Research interests
-          </a>
-          <a href="#education" onClick={closeMenu}>
-            Education
-          </a>
-          <a href="#experience" onClick={closeMenu}>
-            Experience
-          </a>
-          <a href="#research" onClick={closeMenu}>
-            Research
-          </a>
-          <a href="#publications" onClick={closeMenu}>
-            Publications
-          </a>
-          <a href="#contact" onClick={closeMenu}>
-            Contact
-          </a>
-          <a href="/xiaohaoyang-lei-cv.pdf" target="_blank" rel="noreferrer" onClick={closeMenu}>
-            Curriculum Vitae <span aria-hidden="true">↗</span>
-            <span className="sr-only"> (opens in a new tab)</span>
+        <nav className="mobile-menu-panel" id="mobile-navigation-panel" aria-label="Contents">
+          {chapters.map((chapter) => (
+            <a key={chapter.id} href={chapter.number ? `#${chapter.id}` : "#title"} onClick={() => setOpen(false)}>
+              <span className="contents-number">{chapter.number}</span>
+              {chapter.label}
+            </a>
+          ))}
+          <a href={profile.cv} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>
+            <span className="contents-number" />
+            CV (PDF)<span className="sr-only"> (opens in a new tab)</span>
           </a>
         </nav>
       ) : null}

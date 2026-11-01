@@ -19,7 +19,7 @@ y: ((MillerY(85) - MillerY(latitude)) / (MillerY(85) - MillerY(-60))) * 440.
 Construction: Sample a regular lattice starting at (3, 3), spaced 6 SVG units.
 Inverse-project each lattice point and retain points inside a source land polygon
 and outside its interior holes. There are 3300 dots, radius 1.35 units,
-fill #d6d3ca, with a transparent background.
+fill #2b3a64 (night palette; originally #d6d3ca), with a transparent background.
 No third-party map renderer or tracking script is embedded.
 
 The corresponding marker projection is app/visitor-map-projection.ts.
