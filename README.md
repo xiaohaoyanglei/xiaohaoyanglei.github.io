@@ -102,46 +102,56 @@ through the frontend after changing the backend or geography handling.
 
 ## Editing
 
-The page is laid out like a paper. The title page (name, affiliations, links,
-a two-sentence abstract, index terms and Figure 1) is meant to be read in a few
-seconds; numbered sections below hold the details: 1 News, 2 Publications
-(numbered references), 3 Research, 4 Background (Table 1), and Appendix A
-(visitor map).
+The page is laid out like a paper. The title page (portrait, name,
+affiliations, email, links, a two-sentence abstract and index terms) is meant
+to be read in a few seconds; numbered sections below hold the details: 1 News,
+2 Publications (numbered references), 3 Research, 4 Background (Table 1), and
+Appendix A (visitor map). On screens at least 1240px wide, the portrait, email
+and links fly into an author card in the left margin once the title page
+scrolls away, and fly back at the top.
 
-- **All text** (affiliations, abstract, index terms, news, publications with
-  BibTeX, education, experience, teaching, honours): `app/content.ts`. Add a
-  news item or a paper there; the page picks it up. Only the newest
-  `visibleNews` items show; the rest fold under "Earlier news". A paper's
-  `links` array takes extra buttons such as `{ label: "arXiv", href: "…" }`; a
-  `DOI` link also makes the title clickable. `venueShort` is what citation
-  previews show.
+- **All text** (affiliations, abstract, index terms, the Scholar / GitHub / CV
+  buttons in `profileLinks`, news, publications with BibTeX, education,
+  experience, teaching, honours): `app/content.ts`. Add a news item or a paper
+  there; the page picks it up. Only the newest `visibleNews` items show; the
+  rest fold under "Earlier news". A paper's `links` array takes extra buttons
+  such as `{ label: "arXiv", href: "…" }`; a `DOI` link also makes the title
+  clickable. `venueShort` is what citation previews show.
 - Section order and the Research paragraphs: `app/page.tsx`
 - Page styling and the night palette (CSS variables at the top): `app/globals.css`
 - Visitor-map layout and embed: `app/visitor-map.tsx`, `app/visitor-map.css`
 - Photo, CV, and social preview image: `public/` (`portrait-crop.jpg` is the
-  Figure 1 photo, a 4:5 crop of `portrait-monash.jpg`; `og.png` is the link
-  preview)
+  title-page photo, a 4:5 crop of `portrait-monash.jpg`; the margin card shows a
+  closer crop of it set by `.profile-card-media` in `globals.css`; `og.png` is
+  the link preview)
 - Static-build configuration: `next.config.ts`, `scripts/build-pages.mjs`
 - Deployment workflow: `.github/workflows/pages.yml`
 
 ### Interactive details
 
-- `app/sampled-portrait.tsx`: Figure 1. On each visit the photo is denoised
-  from Gaussian noise (40 steps, cosine schedule, coarse-to-fine), and
-  snapshots at t = 1000, 600 and 300 drop into the strip beside it.
-  *Resample* replays it with a new seed. With reduced motion the snapshots are
-  drawn once, without animation.
+- `app/sampled-portrait.tsx`: the title-page portrait. On each visit it is
+  denoised from Gaussian noise (40 steps, cosine schedule, coarse-to-fine),
+  with the timestep burnt into the corner; the round button that appears on
+  hover resamples it with a new seed. With reduced motion the photo is shown
+  directly.
+- `app/profile-dock.tsx`: the author card. Each docking item (portrait, email,
+  three buttons) exists twice, on the title page and in the card, paired by
+  `data-dock-item`; a transition measures where each copy is drawn, switches
+  state, and flies the visible copy along a curved path (FLIP with the Web
+  Animations API), so it can turn around mid-flight. Keyboard focus and
+  reduced motion are respected, and below 1240px nothing docks.
 - `app/running-head.tsx`: journal-style running head; the author and current
-  section appear once the title has scrolled away.
+  section appear once the title has scrolled away (the name stays in the card
+  on wide screens).
 - `app/moon-mark.tsx`: the moon in the running head shows the real lunar phase
   (Meeus' low-precision formula), mirrored for the southern hemisphere.
-- `app/contents.tsx`: table of contents in the left margin on wide screens
+- `app/contents.tsx`: table of contents in the right margin on wide screens
   ("Contents" menu on narrow ones).
 - `app/chapter-scrubber.tsx`: reading progress as a video scrubber, one
   segment per section.
 - `app/cite.tsx`: in-text citations such as [2] preview the reference on
   hover or keyboard focus.
-- `app/world-model-toy.tsx`: Figure 2, a small action-conditioned "world
+- `app/world-model-toy.tsx`: Figure 1, a small action-conditioned "world
   model"; each action denoises the next frame into a film strip.
 - `app/paper-teaser.tsx`: schematic input → output drawings for each paper,
   revealed with a wipe on hover or tap.

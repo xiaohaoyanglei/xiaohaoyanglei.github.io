@@ -375,11 +375,12 @@ sup {
   background: var(--rule);
 }
 
-/* Paper-style table of contents in the left margin (wide screens only). */
+/* Paper-style table of contents in the right margin (wide screens only); the
+   author card takes the left one. */
 .contents {
   position: fixed;
-  top: 112px;
-  left: max(20px, calc(50% - var(--measure) / 2 - 230px));
+  top: calc(var(--head-height) + 40px);
+  left: min(calc(50% + var(--measure) / 2 + 48px), calc(100% - 196px));
   display: none;
   width: 176px;
   opacity: 0;
@@ -446,8 +447,19 @@ sup {
 /* Title page: who, where, what. Everything else waits below. */
 .title-page {
   position: relative;
-  padding-top: 76px;
+  padding-top: 52px;
   text-align: center;
+}
+
+/* Items that can fly into the margin card. FLIP transforms are computed from
+   the top-left corner; on the title page they are positioned so that, on the
+   way home, they can pass over the card. */
+[data-dock-item] {
+  transform-origin: 0 0;
+}
+
+.title-page [data-dock-item] {
+  position: relative;
 }
 
 .stamp {
@@ -488,10 +500,13 @@ sup {
 }
 
 .contact {
+  margin: 0 0 22px;
+}
+
+.contact-inner {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin: 0 0 22px;
 }
 
 .contact a {
@@ -533,7 +548,7 @@ sup {
   margin: 0 0 50px;
 }
 
-.link-buttons a {
+.pill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -544,16 +559,17 @@ sup {
   color: var(--text);
   font: 500 14px var(--sans);
   text-decoration: none;
+  white-space: nowrap;
   transition:
     box-shadow 160ms ease,
     background 160ms ease;
 }
 
-.link-buttons a svg {
+.pill svg {
   color: var(--moon);
 }
 
-.link-buttons a:hover {
+.pill:hover {
   background: #1a2544;
   box-shadow: inset 0 0 0 1px rgba(243, 186, 93, 0.7);
 }
@@ -609,102 +625,35 @@ sup {
   font-weight: 650;
 }
 
-.caption-button {
-  margin-left: 2px;
-  padding: 1px 10px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 999px;
-  color: var(--text-2);
-  font: 500 12.5px/1.6 var(--sans);
-  vertical-align: 1px;
-  transition:
-    color 140ms ease,
-    border-color 140ms ease;
-}
-
-.caption-button:hover:not(:disabled) {
-  border-color: var(--moon);
-  color: var(--text);
-}
-
-.caption-button:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
-/* Figure 1: snapshots of the reverse process, then the sample. */
-.sampling {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-}
-
-.sampling-steps {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.sampling-steps li,
-.sampling-final {
-  display: grid;
-  justify-items: center;
-  gap: 7px;
-}
-
-.sampling-steps canvas {
-  width: 108px;
-  height: 135px;
-  border-radius: 4px;
-  background: var(--night-2);
-  box-shadow: 0 0 0 1px var(--rule-strong);
-}
-
-.sampling-steps canvas[data-filled="false"] {
-  background:
-    repeating-linear-gradient(135deg, rgba(148, 170, 230, 0.05) 0 6px, transparent 6px 12px),
-    var(--night-2);
-}
-
-.sampling-steps span,
-.sampling-readout {
-  color: var(--text-3);
-  font: 12px var(--mono);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.sampling-readout {
-  display: flex;
-  gap: 12px;
-}
-
-.sampling-t {
-  display: inline-block;
-  min-width: 6ch;
-}
-
-.sampling-arrow {
-  padding: 0 2px 20px;
-  color: var(--text-3);
+/* The portrait, denoised from fresh noise on each visit (sampled-portrait.tsx). */
+.avatar-slot {
+  width: 184px;
+  margin: 0 auto 26px;
 }
 
 .portrait-frame {
   position: relative;
-  width: 272px;
   aspect-ratio: 4 / 5;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--night-2);
   box-shadow:
     0 0 0 1px rgba(148, 170, 230, 0.18),
-    0 30px 70px -30px rgba(0, 0, 0, 0.9),
-    0 0 110px -30px rgba(243, 186, 93, 0.22);
+    0 24px 54px -24px rgba(0, 0, 0, 0.9),
+    0 0 84px -22px rgba(243, 186, 93, 0.24);
 }
 
-.portrait-frame img,
-.portrait-canvas {
+.portrait-media,
+.profile-card-media {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 40%;
+}
+
+.portrait-media img,
+.portrait-canvas,
+.profile-card-media img,
+.profile-card-noise {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -713,7 +662,8 @@ sup {
   filter: saturate(0.94) brightness(0.95);
 }
 
-.portrait-canvas {
+.portrait-canvas,
+.profile-card-noise {
   image-rendering: pixelated;
 }
 
@@ -727,10 +677,198 @@ sup {
   transition: opacity 700ms ease;
 }
 
-.sampling-figure figcaption {
-  max-width: 600px;
-  margin-inline: auto;
-  text-align: center;
+/* Timestep readout while sampling, like a timecode burnt into the frame. */
+.portrait-readout {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(5, 8, 15, 0.62);
+  color: var(--text-2);
+  font: 11px/1.7 var(--mono);
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 500ms ease 400ms;
+}
+
+.portrait-frame[data-status="sampling"] .portrait-readout {
+  opacity: 1;
+  transition: none;
+}
+
+.portrait-resample {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(5, 8, 15, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(232, 235, 244, 0.16);
+  color: var(--text);
+  opacity: 0;
+  transition:
+    opacity 180ms ease,
+    color 140ms ease;
+}
+
+.portrait-resample:hover {
+  color: var(--moon);
+}
+
+.portrait-resample:focus-visible {
+  border-radius: 50%;
+}
+
+.portrait-frame:hover .portrait-resample:not(:disabled),
+.portrait-resample:focus-visible:not(:disabled) {
+  opacity: 1;
+}
+
+.portrait-resample:disabled {
+  pointer-events: none;
+}
+
+@media (hover: none) {
+  .portrait-resample:not(:disabled) {
+    opacity: 0.8;
+  }
+}
+
+/* The author card in the left margin. Hidden until the title page scrolls
+   away on a wide screen; see app/profile-dock.tsx. */
+.profile-card {
+  display: none;
+}
+
+.profile-card-panel {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(22, 32, 58, 0.94), rgba(13, 20, 39, 0.94));
+  box-shadow:
+    inset 0 0 0 1px rgba(148, 170, 230, 0.14),
+    inset 0 1px 0 rgba(232, 235, 244, 0.05),
+    0 32px 70px -34px rgba(0, 0, 0, 0.85);
+}
+
+.profile-card-identity {
+  display: block;
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.profile-card-avatar {
+  position: relative;
+  display: block;
+  width: 112px;
+  aspect-ratio: 4 / 5;
+  margin: 0 auto 14px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--night-2);
+  /* The title-page frame's shadow, at this size. */
+  box-shadow:
+    0 0 0 1px rgba(148, 170, 230, 0.18),
+    0 15px 33px -15px rgba(0, 0, 0, 0.9),
+    0 0 51px -13px rgba(243, 186, 93, 0.24);
+}
+
+/* A closer crop than the title page: the photo zooms in as it docks. */
+.profile-card-media {
+  transform: scale(2.1);
+}
+
+.profile-card-noise {
+  opacity: 0;
+}
+
+.profile-card-name {
+  display: block;
+  font-size: 19px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  transition: color 160ms ease;
+}
+
+.profile-card-identity:hover .profile-card-name {
+  color: var(--moon);
+}
+
+.profile-card-name sup,
+.profile-card-note sup {
+  margin-left: 1px;
+  color: var(--moon);
+  font-style: normal;
+}
+
+.profile-card-note sup {
+  margin: 0 2px 0 0;
+}
+
+.profile-card-affiliation {
+  margin: 5px 0 0;
+  color: var(--text-2);
+  font: 13px/1.45 var(--sans);
+}
+
+.profile-card-rule {
+  display: block;
+  width: 36px;
+  height: 1px;
+  margin: 15px auto 13px;
+  background: var(--rule-strong);
+}
+
+.profile-card-email {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.profile-card-email > span {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.profile-card-email a {
+  color: var(--text-2);
+  font: 12.5px/1.45 var(--mono);
+  text-decoration: none;
+}
+
+.profile-card-email a:hover {
+  color: var(--text);
+}
+
+.profile-card-email .copy-button {
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  vertical-align: -6px;
+}
+
+.profile-card-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.profile-card-note {
+  margin: 14px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.4;
 }
 
 /* --------------------------------------------------------- sections ---- */
@@ -1387,6 +1525,7 @@ sup {
     writing-mode: vertical-rl;
     transform: rotate(180deg);
     user-select: none;
+    transition: opacity 400ms ease;
   }
 }
 
@@ -1397,6 +1536,50 @@ sup {
 
   .running-head-section,
   .mobile-menu {
+    display: none;
+  }
+}
+
+@media screen and (min-width: 1240px) {
+  .profile-card {
+    --card-width: clamp(224px, calc((100% - var(--measure)) / 2 - 76px), 256px);
+    position: fixed;
+    z-index: 40;
+    top: calc(var(--head-height) + 34px);
+    left: max(16px, calc(50% - var(--measure) / 2 - 40px - var(--card-width)));
+    display: block;
+    width: var(--card-width);
+    padding: 24px 16px 18px;
+    isolation: isolate;
+    text-align: center;
+    visibility: hidden;
+  }
+
+  html[data-dock="docked"] .profile-card {
+    visibility: visible;
+  }
+
+  /* Docked: the title-page copies stay in the accessibility tree but out of sight. */
+  html[data-dock="docked"] .title-page [data-dock-item] {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  html[data-dock="docked"] .stamp {
+    opacity: 0;
+  }
+
+  html[data-dock="docked"] .contents {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition:
+      opacity 350ms ease 200ms,
+      transform 350ms ease 200ms;
+  }
+
+  /* The card carries the name, so the running head keeps just the moon. */
+  .running-head-name {
     display: none;
   }
 }
@@ -1417,7 +1600,12 @@ sup {
   }
 
   .title-page {
-    padding-top: 44px;
+    padding-top: 34px;
+  }
+
+  .avatar-slot {
+    width: 148px;
+    margin-bottom: 22px;
   }
 
   .title {
@@ -1433,47 +1621,13 @@ sup {
     margin-bottom: 40px;
   }
 
-  .link-buttons a {
+  .link-buttons .pill {
     padding: 7px 13px;
   }
 
   .abstract p {
     font-size: 17px;
     text-align: left;
-  }
-
-  .sampling {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .sampling-final {
-    order: -1;
-    width: 100%;
-  }
-
-  .portrait-frame {
-    width: min(100%, 320px);
-  }
-
-  .sampling-arrow {
-    display: none;
-  }
-
-  .sampling-steps {
-    width: min(100%, 320px);
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .sampling-steps li {
-    flex: 1;
-  }
-
-  .sampling-steps canvas {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 4 / 5;
   }
 
   .paper-section {
@@ -1557,6 +1711,8 @@ sup {
   .scrubber-label,
   .moon-mark,
   .contents,
+  html[data-dock="docked"] .contents,
+  .stamp,
   .running-head-name,
   .running-head-section,
   .cite-pop {
@@ -1572,7 +1728,9 @@ sup {
   .starfield,
   .running-head,
   .contents,
-  .caption-button,
+  .profile-card,
+  .portrait-resample,
+  .portrait-readout,
   .toy-figure,
   #visitors {
     display: none;

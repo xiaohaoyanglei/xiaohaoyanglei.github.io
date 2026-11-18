@@ -84,6 +84,13 @@ export const ArrowIcon = ({ direction, ...props }: IconProps & { direction: "lef
   </Icon>
 );
 
+export const ResampleIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M13.5 8a5.5 5.5 0 1 1-1.7-3.97" />
+    <path d="M11.8 1.45v2.6H9.2" />
+  </Icon>
+);
+
 export const PauseIcon = (props: IconProps) => (
   <Icon {...props}>
     <circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none" />

@@ -7,7 +7,8 @@ import MoonMark from "./moon-mark";
 
 // Journal-style running head. On the title page it shows only tonight's moon;
 // past the title it adds the author and the current section, like the header
-// line on every page after the first.
+// line on every page after the first. On screens wide enough for the margin
+// card, the card carries the name, so the head keeps just the moon.
 
 type Chapter = { id: string; number: string; label: string };
 
@@ -25,7 +26,7 @@ export default function RunningHead({
   return (
     <header className={`running-head${pastTitle ? " is-past-title" : ""}`}>
       <div className="running-head-inner">
-        <a className="running-head-mark" href="#title" aria-label={`${name}, back to the title`}>
+        <a className="running-head-mark" href="#about" aria-label={`${name}, back to the top`}>
           <MoonMark city={city} size={22} />
           <span className="running-head-name" aria-hidden="true">
             {name}

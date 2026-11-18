@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-// A paper-style table of contents in the left margin. It stays out of the way
-// on the title page and appears once the reader scrolls into the sections.
+// A paper-style table of contents in the right margin. It stays out of the way
+// on the title page and appears once the reader scrolls on (together with the
+// author card on screens wide enough for it).
 
 type Chapter = { id: string; number: string; label: string };
 

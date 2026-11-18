@@ -5,6 +5,8 @@ import Contents from "./contents";
 import CopyButton from "./copy-button";
 import LocalClock from "./local-clock";
 import PaperTeaser from "./paper-teaser";
+import ProfileDock from "./profile-dock";
+import ProfileLinks from "./profile-links";
 import RunningHead from "./running-head";
 import SampledPortrait from "./sampled-portrait";
 import VisitorMap from "./visitor-map";
@@ -25,10 +27,11 @@ import {
   type NewsItem,
   type Publication,
 } from "./content";
-import { CodeIcon, DocumentIcon, ScholarIcon } from "./icons";
 
 // The page is laid out like a paper: a calm title page (who, where, what, in
-// a few lines), then numbered sections for anyone who wants the details.
+// a few lines), then numbered sections for anyone who wants the details. On
+// wide screens the portrait and contact details dock into a margin card once
+// the title page scrolls away (app/profile-dock.tsx).
 
 function NewTab() {
   return <span className="sr-only"> (opens in a new tab)</span>;
@@ -154,12 +157,19 @@ export default function Home() {
       <ConsoleGreeting email={profile.email} />
       <RunningHead chapters={chapters} name={profile.name} city={profile.city} />
       <Contents chapters={chapters} />
+      <ProfileDock
+        name={profile.name}
+        affiliation={titlePage.affiliations[0]?.name ?? ""}
+        email={profile.email}
+        portrait={profile.portrait}
+      />
 
       <main id="main-content" className="paper" tabIndex={-1}>
         <header className="title-page" id="about">
           <p className="stamp" aria-hidden="true">
             {profile.stamp}
           </p>
+          <SampledPortrait src={profile.portrait} alt={profile.portraitAlt} />
           <h1 className="title" id="title">
             {profile.name}
             <sup aria-hidden="true">{titlePage.affiliations.map((item) => item.mark).join(",")}</sup>
@@ -173,32 +183,12 @@ export default function Home() {
             ))}
           </p>
           <p className="contact">
-            <a href={`mailto:${profile.email}`}>{profile.email}</a>
-            <CopyButton text={profile.email} label="Copy email address" />
+            <span className="contact-inner" data-dock-item="email">
+              <a href={`mailto:${profile.email}`}>{profile.email}</a>
+              <CopyButton text={profile.email} label="Copy email address" />
+            </span>
           </p>
-          <ul className="link-buttons">
-            <li>
-              <a href={profile.scholar} target="_blank" rel="noreferrer">
-                <ScholarIcon />
-                Google Scholar
-                <NewTab />
-              </a>
-            </li>
-            <li>
-              <a href={profile.github} target="_blank" rel="noreferrer">
-                <CodeIcon />
-                GitHub
-                <NewTab />
-              </a>
-            </li>
-            <li>
-              <a href={profile.cv} target="_blank" rel="noreferrer">
-                <DocumentIcon />
-                CV
-                <NewTab />
-              </a>
-            </li>
-          </ul>
+          <ProfileLinks className="link-buttons" />
 
           <section className="abstract" aria-labelledby="abstract-title">
             <h2 id="abstract-title">Abstract</h2>
@@ -207,8 +197,6 @@ export default function Home() {
               <em>Index Terms</em>—{titlePage.indexTerms.join(", ")}.
             </p>
           </section>
-
-          <SampledPortrait src={profile.portrait} alt={profile.portraitAlt} />
         </header>
 
         <section className="paper-section" id="news" aria-labelledby="news-title">
@@ -292,7 +280,7 @@ export default function Home() {
           <p>
             <strong className="run-in">Next.</strong> Action-conditioned video world models, which roll a scene forward
             frame by frame given an agent’s actions: a step from generating video towards simulating the world it shows.
-            Figure 2 is a toy version.
+            Figure 1 is a toy version.
           </p>
           <p>
             <strong className="run-in">Before.</strong> Blended emotion recognition with structured set prediction{" "}
@@ -303,7 +291,7 @@ export default function Home() {
           <figure className="figure toy-figure">
             <WorldModelToy />
             <figcaption>
-              <span className="figure-label">Figure 2.</span> A toy action-conditioned world model. Choose an action
+              <span className="figure-label">Figure 1.</span> A toy action-conditioned world model. Choose an action
               (or use the arrow keys) and the next frame is denoised from noise, conditioned on it. The “model” is a
               hand-written renderer, not a trained network, so it never hallucinates.
             </figcaption>

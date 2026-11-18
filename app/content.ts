@@ -18,6 +18,13 @@ export const profile = {
   stamp: "xiaohaoyanglei.github.io  [cs.CV]  Nov 2026",
 };
 
+/** Buttons under the email, on the title page and in the margin card. */
+export const profileLinks = [
+  { id: "scholar", label: "Google Scholar", href: profile.scholar },
+  { id: "github", label: "GitHub", href: profile.github },
+  { id: "cv", label: "CV", href: profile.cv },
+] as const;
+
 /** Title page, laid out like the first page of a paper. Keep it short. */
 export const titlePage = {
   affiliations: [
