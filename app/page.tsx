@@ -155,7 +155,7 @@ export default function Home() {
         Skip to content
       </a>
       <ConsoleGreeting email={profile.email} />
-      <RunningHead chapters={chapters} name={profile.name} city={profile.city} />
+      <RunningHead chapters={chapters} name={profile.name} city={profile.city} timeZone={profile.timeZone} />
       <Contents chapters={chapters} />
       <ProfileDock
         name={profile.name}

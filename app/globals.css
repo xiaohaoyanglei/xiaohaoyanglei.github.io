@@ -24,6 +24,11 @@
   --measure: 720px;
   --head-height: 46px;
   --ease-wipe: cubic-bezier(0.65, 0.05, 0.25, 1);
+  /* Margin columns on wide screens: the author card on the left, the contents
+     on the right. The running head lines its margin items up with them. */
+  --card-width: clamp(224px, calc((100% - var(--measure)) / 2 - 76px), 256px);
+  --rail-left: max(16px, calc(50% - var(--measure) / 2 - 40px - var(--card-width)));
+  --rail-right: min(calc(50% + var(--measure) / 2 + 48px), calc(100% - 196px));
 }
 
 html {
@@ -182,6 +187,12 @@ sup {
   height: var(--head-height);
 }
 
+.running-head-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .running-head-mark {
   display: inline-flex;
   align-items: center;
@@ -190,6 +201,37 @@ sup {
   font-size: 15.5px;
   font-weight: 500;
   text-decoration: none;
+}
+
+/* Margin items (wide screens): the time in Melbourne beside the moon, and the
+   page number, as in a printed paper's header. */
+.running-head-clock,
+.running-head-page {
+  display: none;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14.5px;
+  white-space: nowrap;
+}
+
+.running-head-clock .local-clock {
+  margin-left: 7px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.running-head-page {
+  gap: 5px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.running-head-page i {
+  color: var(--text-3);
+}
+
+.running-head-page span {
+  color: var(--text);
 }
 
 .running-head-name,
@@ -380,7 +422,7 @@ sup {
 .contents {
   position: fixed;
   top: calc(var(--head-height) + 40px);
-  left: min(calc(50% + var(--measure) / 2 + 48px), calc(100% - 196px));
+  left: var(--rail-right);
   display: none;
   width: 176px;
   opacity: 0;
@@ -1538,15 +1580,56 @@ sup {
   .mobile-menu {
     display: none;
   }
+
+  .running-head-page {
+    position: absolute;
+    top: 0;
+    left: var(--rail-right);
+    display: flex;
+    align-items: center;
+    height: var(--head-height);
+  }
 }
 
 @media screen and (min-width: 1240px) {
+  /* One line across the page: moon and clock, the scrubber, the page number. */
+  .running-head-inner {
+    height: 0;
+  }
+
+  .running-head .scrubber {
+    height: calc(var(--head-height) + 10px);
+  }
+
+  .running-head .scrubber ol {
+    top: calc(50% - 6px);
+    height: 10px;
+  }
+
+  .running-head .scrubber-head {
+    bottom: calc(50% - 3px);
+  }
+
+  .running-head-start,
+  .running-head-page {
+    position: absolute;
+    top: 0;
+    height: calc(var(--head-height) + 10px);
+  }
+
+  .running-head-start {
+    left: var(--rail-left);
+  }
+
+  .running-head-clock {
+    display: block;
+  }
+
   .profile-card {
-    --card-width: clamp(224px, calc((100% - var(--measure)) / 2 - 76px), 256px);
     position: fixed;
     z-index: 40;
     top: calc(var(--head-height) + 34px);
-    left: max(16px, calc(50% - var(--measure) / 2 - 40px - var(--card-width)));
+    left: var(--rail-left);
     display: block;
     width: var(--card-width);
     padding: 24px 16px 18px;

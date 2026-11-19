@@ -141,8 +141,10 @@ scrolls away, and fly back at the top.
   Animations API), so it can turn around mid-flight. Keyboard focus and
   reduced motion are respected, and below 1240px nothing docks.
 - `app/running-head.tsx`: journal-style running head; the author and current
-  section appear once the title has scrolled away (the name stays in the card
-  on wide screens).
+  section appear once the title has scrolled away. On wide screens it runs
+  across the margins on one line: tonight's moon and the time in Melbourne
+  above the author card, the scrubber over the text column, and the page
+  number (`app/page-counter.tsx`, one screen to a page) above the contents.
 - `app/moon-mark.tsx`: the moon in the running head shows the real lunar phase
   (Meeus' low-precision formula), mirrored for the southern hemisphere.
 - `app/contents.tsx`: table of contents in the right margin on wide screens
